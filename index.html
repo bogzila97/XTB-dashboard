@@ -1,0 +1,2610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>XTB Portfolio &amp; Romanian Tax Tracker</title>
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a0e17">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="XTB Tracker">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+
+<!-- Libraries: bundled locally so the app works fully offline once installed -->
+<script src="libs/xlsx.full.min.js"></script>
+<script src="libs/chart.umd.min.js"></script>
+<script src="libs/chartjs-plugin-datalabels.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0e17;
+  --surface:#111828;
+  --surface-alt:#161f33;
+  --border:#232e42;
+  --text:#f2f4f8;
+  --text-dim:#8b96ac;
+  --text-faint:#5b6478;
+  --accent:#e8a33d;
+  --accent-dim:#8a6423;
+  --pos:#34d399;
+  --pos-dim:#0f2e24;
+  --neg:#f87171;
+  --neg-dim:#331414;
+  --info:#60a5fa;
+  --info-dim:#12233d;
+  --cash:#5b6478;
+  --radius:14px;
+  --mono:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
+  --sans:'Inter',system-ui,-apple-system,sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:var(--bg);color:var(--text);font-family:var(--sans)}
+body{min-height:100vh;padding-bottom:calc(60px + env(safe-area-inset-bottom))}
+::selection{background:var(--accent-dim);color:#fff}
+
+/* ---------- ticker tape ---------- */
+.tape-wrap{width:100%;overflow:hidden;background:var(--surface);border-bottom:1px solid var(--border);white-space:nowrap;height:38px;display:flex;align-items:center;padding-top:env(safe-area-inset-top)}
+.tape-track{display:inline-flex;align-items:center;animation:scroll 40s linear infinite}
+.tape-wrap:hover .tape-track{animation-play-state:paused}
+.tape-item{display:inline-flex;align-items:center;gap:8px;padding:0 22px;font-family:var(--mono);font-size:12.5px;letter-spacing:.02em;border-right:1px solid var(--border)}
+.tape-item b{color:var(--text)}
+.tape-empty{padding:0 22px;color:var(--text-faint);font-family:var(--mono);font-size:12.5px}
+@keyframes scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+/* ---------- layout ---------- */
+.wrap{max-width:1280px;margin:0 auto;padding:28px max(20px,env(safe-area-inset-right)) 0 max(20px,env(safe-area-inset-left))}
+.top{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-bottom:18px;flex-wrap:wrap}
+.top h1{font-size:22px;font-weight:700;letter-spacing:-.01em}
+.top h1 span{color:var(--accent)}
+.meta{color:var(--text-dim);font-size:13px;margin-top:6px;font-family:var(--mono)}
+.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.btn{background:var(--accent);color:#1a1204;padding:11px 18px;border-radius:10px;cursor:pointer;font-weight:600;font-size:13.5px;border:none;transition:transform .12s ease,filter .12s ease;display:inline-flex;align-items:center;gap:8px}
+.btn:hover{filter:brightness(1.08)}
+.btn:active{transform:scale(.97)}
+.btn-ghost{background:transparent;color:var(--text-dim);border:1px solid var(--border);padding:10px 16px;border-radius:10px;cursor:pointer;font-size:13px;font-family:var(--sans)}
+.btn-ghost:hover{color:var(--text);border-color:var(--text-faint)}
+.btn-sm{padding:6px 11px;font-size:12px;border-radius:8px}
+input[type=file]{display:none}
+
+/* ---------- tabs ---------- */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:22px;overflow-x:auto}
+.tab{background:none;border:none;border-bottom:2px solid transparent;color:var(--text-dim);font-family:var(--sans);font-size:14px;font-weight:600;padding:12px 18px;cursor:pointer;white-space:nowrap;margin-bottom:-1px;display:inline-flex;align-items:center;gap:8px}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab .pill{background:var(--surface-alt);border:1px solid var(--border);border-radius:20px;font-family:var(--mono);font-size:10.5px;padding:2px 7px;color:var(--text-dim)}
+.page{display:none}
+.page.active{display:block;animation:fade .25s ease}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* ---------- stat cards ---------- */
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.grid-5{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:14px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;position:relative;overflow:hidden}
+.card .label{color:var(--text-dim);font-size:12px;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.card .value{font-family:var(--mono);font-size:26px;font-weight:600;margin-top:10px;letter-spacing:-.01em}
+.card .value.sm{font-size:21px}
+.card .sub{font-family:var(--mono);font-size:13px;margin-top:4px;color:var(--text-dim)}
+.card.pos .value,.card.pos .sub{color:var(--pos)}
+.card.neg .value,.card.neg .sub{color:var(--neg)}
+.card.accent .value{color:var(--accent)}
+.cash-card input{background:var(--surface-alt);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:22px;font-weight:600;border-radius:8px;padding:8px 10px;width:100%;margin-top:8px}
+.cash-card input:focus{outline:none;border-color:var(--accent)}
+.cash-note{font-size:11px;color:var(--text-faint);margin-top:7px;line-height:1.4}
+
+/* ---------- panels ---------- */
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-top:14px}
+.panel-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px}
+.panel h3{font-size:14px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em}
+.panel h4{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px}
+.panel p.note{font-size:12.5px;color:var(--text-faint);line-height:1.65}
+canvas{max-height:320px}
+
+/* toggle group */
+.toggle-group{display:inline-flex;background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;padding:3px;gap:2px;flex-wrap:wrap}
+.toggle-btn{background:transparent;border:none;color:var(--text-dim);font-family:var(--sans);font-size:12px;font-weight:600;padding:6px 12px;border-radius:6px;cursor:pointer}
+.toggle-btn.active{background:var(--accent);color:#1a1204}
+.toggle-btn:not(.active):hover{color:var(--text)}
+
+/* allocation panel */
+.alloc-layout{display:grid;grid-template-columns:0.9fr 1.1fr;gap:28px;align-items:center}
+.alloc-chart{position:relative}
+.alloc-list table{width:100%;border-collapse:collapse;font-size:13px}
+.alloc-list th{text-align:right;color:var(--text-dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:0 8px 8px;border-bottom:1px solid var(--border)}
+.alloc-list th:first-child{text-align:left}
+.alloc-list td{padding:8px;border-bottom:1px solid var(--border);text-align:right;font-family:var(--mono)}
+.alloc-list td:first-child{text-align:left;font-family:var(--sans)}
+.alloc-list tr:last-child td{border-bottom:none}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:8px;flex-shrink:0}
+.asset-name{display:flex;align-items:center;font-weight:600}
+.asset-name .cash-label{color:var(--text-dim);font-weight:500}
+
+/* ---------- table ---------- */
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{padding:11px 12px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--text-dim);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;user-select:none;position:relative}
+th.sortable{cursor:pointer}
+th.sortable:hover{color:var(--text)}
+th.sorted::after{content:attr(data-dir);margin-left:5px;color:var(--accent)}
+td{font-family:var(--mono)}
+tbody tr:hover{background:var(--surface-alt)}
+tfoot td{font-weight:700;border-top:1px solid var(--border);border-bottom:none;color:var(--text)}
+.ticker-cell b{color:var(--text);font-family:var(--mono);font-weight:600}
+.company{color:var(--text-faint);font-size:11.5px;font-family:var(--sans);margin-top:2px}
+.pos{color:var(--pos)}.neg{color:var(--neg)}.dim{color:var(--text-dim)}
+.weight-bar{display:inline-block;height:3px;background:var(--accent-dim);border-radius:2px;margin-top:5px}
+
+/* badges */
+.badge{display:inline-block;font-family:var(--sans);font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:3px 7px;border-radius:5px;border:1px solid transparent}
+.badge.lt{background:var(--pos-dim);color:var(--pos);border-color:#1d5a45}
+.badge.st{background:#3a2a10;color:var(--accent);border-color:var(--accent-dim)}
+.badge.neutral{background:var(--surface-alt);color:var(--text-dim);border-color:var(--border)}
+.badge.warn{background:var(--neg-dim);color:var(--neg);border-color:#5c2222}
+
+/* ---------- forms ---------- */
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-dim);font-weight:600}
+.field .hint{font-size:11px;color:var(--text-faint)}
+input[type=text],input[type=number],select{background:var(--surface-alt);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:13.5px;border-radius:8px;padding:9px 10px;width:100%}
+select{font-family:var(--sans)}
+input:focus,select:focus{outline:none;border-color:var(--accent)}
+input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
+.setup-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px}
+.inline-check{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--text-dim);cursor:pointer}
+.mini-input{width:110px}
+
+/* ---------- CASS ladder ---------- */
+.ladder{margin-top:6px}
+.rung{display:grid;grid-template-columns:150px 1fr 130px;gap:14px;align-items:center;padding:11px 0;border-bottom:1px solid var(--border)}
+.rung:last-child{border-bottom:none}
+.rung.on{background:linear-gradient(90deg,rgba(232,163,61,.10),transparent 70%);margin:0 -12px;padding:11px 12px;border-radius:8px}
+.rung-name{font-size:13px;font-weight:600}
+.rung-name small{display:block;color:var(--text-faint);font-family:var(--mono);font-size:11px;font-weight:400;margin-top:2px}
+.rung-bar{height:8px;background:var(--surface-alt);border-radius:4px;overflow:hidden;position:relative}
+.rung-bar i{display:block;height:100%;background:var(--accent);border-radius:4px}
+.rung-bar.done i{background:var(--neg)}
+.rung-val{text-align:right;font-family:var(--mono);font-size:14px;font-weight:600}
+.marker{margin-top:14px;font-family:var(--mono);font-size:12.5px;color:var(--text-dim)}
+
+/* ---------- tips ---------- */
+.tips{display:grid;gap:12px}
+.tip{border:1px solid var(--border);border-left-width:3px;border-radius:10px;padding:14px 16px;background:var(--surface-alt)}
+.tip h5{font-size:13.5px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.tip p{font-size:13px;color:var(--text-dim);line-height:1.65}
+.tip p+p{margin-top:7px}
+.tip b{color:var(--text);font-family:var(--mono);font-weight:600}
+.tip.good{border-left-color:var(--pos)} .tip.good h5{color:var(--pos)}
+.tip.warn{border-left-color:var(--neg)} .tip.warn h5{color:var(--neg)}
+.tip.act{border-left-color:var(--accent)} .tip.act h5{color:var(--accent)}
+.tip.info{border-left-color:var(--info)} .tip.info h5{color:var(--info)}
+
+/* ---------- misc ---------- */
+.empty{border:1px dashed var(--border);border-radius:var(--radius);padding:44px 20px;text-align:center;color:var(--text-dim)}
+.empty b{color:var(--text);display:block;font-size:16px;margin-bottom:6px}
+.empty p{font-size:13.5px;max-width:520px;margin:0 auto;line-height:1.7}
+.footer-note{color:var(--text-faint);font-size:12px;text-align:center;margin-top:28px;line-height:1.7}
+.disclaimer{border:1px solid var(--accent-dim);background:rgba(232,163,61,.06);border-radius:10px;padding:14px 16px;font-size:12.5px;color:var(--text-dim);line-height:1.7}
+.disclaimer b{color:var(--accent)}
+details{border:1px solid var(--border);border-radius:10px;padding:0;margin-top:10px;background:var(--surface-alt)}
+details summary{cursor:pointer;padding:12px 15px;font-size:13.5px;font-weight:600;color:var(--text);list-style:none;display:flex;justify-content:space-between;align-items:center}
+details summary::-webkit-details-marker{display:none}
+details summary::after{content:'+';color:var(--accent);font-family:var(--mono);font-size:16px}
+details[open] summary::after{content:'−'}
+details .body{padding:0 15px 15px;font-size:13px;color:var(--text-dim);line-height:1.75}
+details .body p+p{margin-top:9px}
+details .body ul{margin:8px 0 0 18px}
+details .body li{margin-bottom:6px}
+details .body code{font-family:var(--mono);font-size:12px;background:var(--bg);padding:2px 5px;border-radius:4px;color:var(--accent)}
+.kv{display:grid;grid-template-columns:1fr auto;gap:8px 18px;font-size:13.5px;padding:9px 0;border-bottom:1px solid var(--border)}
+.kv:last-child{border-bottom:none}
+.kv span:last-child{font-family:var(--mono);font-weight:600}
+.kv.total{border-top:1px solid var(--border);border-bottom:none;margin-top:4px;padding-top:13px;font-size:15px}
+.kv.total span:last-child{color:var(--accent);font-size:17px}
+.fx-note{font-family:var(--mono);font-size:11.5px;color:var(--text-faint);margin-top:9px;line-height:1.6}
+.seg{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.status-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--pos);margin-right:6px}
+.status-dot.off{background:var(--text-faint)}
+.status-dot.err{background:var(--neg)}
+.row-actions button{background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:15px;padding:2px 6px}
+.row-actions button:hover{color:var(--neg)}
+.scroll-x{overflow-x:auto}
+
+/* ---------- deposits / performance ---------- */
+.perf-bar{height:22px;border-radius:6px;overflow:hidden;display:flex;background:var(--surface-alt);border:1px solid var(--border);margin:10px 0}
+.perf-bar div{height:100%}
+.perf-bar .seg-contrib{background:var(--info)}
+.perf-bar .seg-gain{background:var(--pos)}
+.perf-bar .seg-loss{background:var(--neg)}
+.perf-legend{display:flex;flex-wrap:wrap;gap:16px;font-size:12.5px;color:var(--text-dim)}
+.perf-legend span.dot{width:9px;height:9px}
+
+@media(max-width:980px){
+  .grid{grid-template-columns:repeat(2,1fr)}
+  .alloc-layout{grid-template-columns:1fr}
+  .grid-3{grid-template-columns:1fr}
+  .rung{grid-template-columns:120px 1fr 100px;gap:10px}
+}
+@media(max-width:560px){
+  .grid{grid-template-columns:1fr}
+  .wrap{padding:18px max(14px,env(safe-area-inset-right)) 0 max(14px,env(safe-area-inset-left))}
+  .btn,.btn-ghost{padding:12px 16px}
+  .toggle-btn{padding:8px 12px}
+  table{font-size:12.5px}
+  .top h1{font-size:19px}
+  .card .value{font-size:22px}
+}
+</style>
+</head>
+<body>
+
+<div class="tape-wrap"><div class="tape-track" id="tape"><span class="tape-empty">Import your XTB report to light up the tape…</span></div></div>
+
+<div class="wrap">
+  <div class="top">
+    <div>
+      <h1>XTB Portfolio <span>&amp; Tax</span></h1>
+      <div class="meta" id="metaLine">No report imported yet</div>
+    </div>
+    <div class="actions">
+      <button class="btn-ghost btn-sm" id="backupBtn" title="Download a JSON backup of everything imported">Backup</button>
+      <label class="btn-ghost btn-sm" style="cursor:pointer" title="Restore from a JSON backup">Restore<input id="restoreFile" type="file" accept=".json" style="display:none"></label>
+      <button class="btn-ghost" id="clearBtn" style="display:none">Clear data</button>
+      <label class="btn">Import XTB report<input id="file" type="file" accept=".xlsx" multiple></label>
+    </div>
+  </div>
+
+  <div class="acct-row" id="acctRow" style="display:none;margin-bottom:20px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+    <div class="toggle-group" id="acctSwitcher"></div>
+    <div class="field" id="viewCcyField" style="display:none;min-width:170px">
+      <label>Combined view currency</label>
+      <select id="viewCcySelect">
+        <option value="EUR">EUR</option><option value="USD">USD</option><option value="RON">RON</option>
+        <option value="GBP">GBP</option><option value="PLN">PLN</option><option value="CHF">CHF</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-page="portfolio">Portfolio tracker</button>
+    <button class="tab" data-page="tax">Tax computation <span class="pill" id="taxPill">RO</span></button>
+    <button class="tab" data-page="guide">Guide &amp; rules</button>
+  </div>
+
+<!-- ==================== TAB 1 : PORTFOLIO ==================== -->
+<div class="page active" id="page-portfolio">
+
+  <div class="grid">
+    <div class="card">
+      <div class="label">Total portfolio value</div>
+      <div class="value" id="totalValue">0.00</div>
+      <div class="sub">Positions + free cash</div>
+    </div>
+    <div class="card">
+      <div class="label">Invested capital</div>
+      <div class="value" id="invested">0.00</div>
+      <div class="sub" id="posCount">0 open positions</div>
+    </div>
+    <div class="card" id="plCard">
+      <div class="label">Unrealized P/L</div>
+      <div class="value" id="upl">0.00</div>
+      <div class="sub" id="uplPct">0.00%</div>
+    </div>
+    <div class="card cash-card">
+      <div class="label">Free cash</div>
+      <input type="number" id="cashInput" step="0.01" placeholder="0.00">
+      <div class="cash-note" id="cashNote">Not included in the XTB export — enter it manually to complete your total.</div>
+    </div>
+  </div>
+
+  <div class="panel" id="perfPanel">
+    <div class="panel-head">
+      <h3>Deposits &amp; real performance</h3>
+      <span class="note" id="perfNote"></span>
+    </div>
+    <div id="perfEmpty" class="empty" style="display:none">
+      <b>Nothing to show yet</b>
+      <p>This needs a <b>Cash Operations</b> and/or <b>Closed Positions</b> export from XTB. In xStation: <b>Reports</b> → set the widest possible date range → download the .xlsx, then import it above. It merges with whatever else you've already loaded.</p>
+    </div>
+    <div id="perfBody" style="display:none">
+      <div class="grid">
+        <div class="card">
+          <div class="label">Total deposited</div>
+          <div class="value sm" id="pDeposited">0.00</div>
+          <div class="sub" id="pDepositedSub"></div>
+        </div>
+        <div class="card">
+          <div class="label">Total withdrawn</div>
+          <div class="value sm" id="pWithdrawn">0.00</div>
+          <div class="sub" id="pWithdrawnSub"></div>
+        </div>
+        <div class="card">
+          <div class="label">Net money in</div>
+          <div class="value sm" id="pNet">0.00</div>
+          <div class="sub">deposits &minus; withdrawals</div>
+        </div>
+        <div class="card" id="pPerfCard">
+          <div class="label">Realized profit</div>
+          <div class="value sm" id="pPerf">0.00</div>
+          <div class="sub" id="pPerfSub"></div>
+        </div>
+      </div>
+      <div class="kv" style="margin-top:14px"><span>Realized trading gains/losses (closed positions)</span><span id="bRealizedTrading">0.00</span></div>
+      <div class="kv"><span>Dividends &amp; interest received</span><span id="bRealizedIncome">0.00</span></div>
+      <div class="kv total"><span>Realized profit</span><span id="bRealizedTotal">0.00</span></div>
+      <div class="kv" style="margin-top:8px"><span>+ Unrealized P/L on positions still open</span><span id="bUnrealized">0.00</span></div>
+      <div class="kv total"><span>Total return (realized + unrealized)</span><span id="bTotalReturn">0.00</span></div>
+      <div class="perf-bar" id="perfBar" style="margin-top:14px"></div>
+      <div class="perf-legend" id="perfLegend"></div>
+      <p class="note" style="margin-top:12px">"Realized profit" only counts money you've actually banked — closed sales, dividends, interest. It ignores how open positions are currently doing. The bar below adds unrealized P/L back in, since that's what makes up your current total value. Needs the <b>Free cash</b> field above filled in to be accurate, and a Cash Operations / Closed Positions export covering your full history — a partial import understates everything.</p>
+
+      <div class="panel-head" style="margin-top:22px;border-top:1px solid var(--border);padding-top:18px">
+        <h3>Annualized return — vs. a benchmark</h3>
+      </div>
+      <div id="xirrEmpty" class="empty" style="display:none">
+        <b>Not enough dated cash flows yet</b>
+        <p>This needs your deposit/withdrawal history with dates — the same Cash Operations export used above. A couple of deposits are enough; more history makes the annual rate more meaningful.</p>
+      </div>
+      <div id="xirrBody" style="display:none">
+        <p class="note" style="margin-bottom:12px">A plain "total return %" doesn't say whether that took 2 years or 20. This does: it's a <b>per-year</b> rate — like a fund advertising "10% a year" — the constant annual rate that would turn your actual deposits and withdrawals, made on their actual dates, into what your account is worth today. "Worth today" already blends both halves of your performance: <b>realized</b> profit you've actually banked (closed trades, dividends, interest) and <b>unrealized</b> profit still sitting in open positions, marked at today's value. This is the same math (XIRR) used to compare a real account to a fund's advertised annual return — and because it's a yearly rate, not a lump total, it's the number to use when comparing years of different lengths, or comparing yourself to a benchmark's "% per year".</p>
+        <div id="xirrWarn"></div>
+        <div class="grid-5">
+          <div class="card" id="xirrCard">
+            <div class="label">Your annualized return (per year)</div>
+            <div class="value sm" id="xirrValue">0.0%</div>
+            <div class="sub" id="xirrSub"></div>
+          </div>
+          <div class="card">
+            <div class="label">Benchmark, annualized</div>
+            <input type="number" id="benchRate" step="0.1" value="10" style="background:var(--surface-alt);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:20px;font-weight:600;border-radius:8px;padding:6px 8px;width:100%;margin-top:6px">
+            <div class="sub">%/yr assumed</div>
+          </div>
+          <div class="card">
+            <div class="label">Benchmark equivalent value</div>
+            <div class="value sm" id="benchValue">0.00</div>
+            <div class="sub">same deposits, hypothetical</div>
+          </div>
+          <div class="card" id="deltaCard">
+            <div class="label">You vs. the benchmark</div>
+            <div class="value sm" id="deltaValue">0.00</div>
+            <div class="sub" id="deltaSub"></div>
+          </div>
+        </div>
+        <div class="toggle-group" style="margin-top:12px" id="benchPresets">
+          <button type="button" class="toggle-btn" data-rate="10">S&amp;P 500 (~10%)</button>
+          <button type="button" class="toggle-btn" data-rate="13">Nasdaq 100 (~13%)</button>
+          <button type="button" class="toggle-btn" data-rate="8">World index (~8%)</button>
+          <button type="button" class="toggle-btn" data-rate="4">Savings/bonds (~4%)</button>
+        </div>
+        <p class="note" style="margin-top:12px">These are commonly-cited long-run <i>nominal</i> averages, not a live feed — real funds vary a lot by period, and none of this is investment advice. Type your own number if you have a specific fund or index in mind. Both figures use your exact deposit/withdrawal dates, so the comparison isn't skewed by when you happened to add money — only by what happened to it afterward.</p>
+      </div>
+
+      <div class="panel-head" style="margin-top:22px;border-top:1px solid var(--border);padding-top:18px">
+        <h3>Return by year</h3>
+      </div>
+      <div id="yearlyEmpty" class="empty" style="display:none">
+        <b>Not enough dated history yet</b>
+        <p>This groups your closed trades, dividends, interest, deposits and withdrawals by the year they happened. Import your fullest Cash Operations / Closed Positions history to see it broken down.</p>
+      </div>
+      <div id="yearlyBody" style="display:none">
+        <p class="note" style="margin-bottom:12px">Each row counts only what actually happened <b>in that year</b>: trades closed, dividends/interest paid, money moved in or out. Profit sitting in positions you haven't sold yet isn't tied to any single year — an XTB export only shows today's value, not what your account was worth on past year-ends — so unrealized P/L is left out of the yearly rows and only folded into the <b>All years</b> row at the bottom. That's also why the yearly rows won't add up to the all-time total above.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Year</th><th>Net deposited</th><th>Realized profit</th><th>Return on capital</th>
+            </tr></thead>
+            <tbody id="yearlyTb"></tbody>
+            <tfoot id="yearlyTf"></tfoot>
+          </table>
+        </div>
+        <p class="note" style="margin-top:10px">"Return on capital" divides that year's realized profit by roughly what you'd put in by then (prior years' net deposits, plus half of what you added that year, since it wasn't all invested from day one) — a simplified estimate, not a precise time-weighted return. The <b>All years</b> row is the exact, money-weighted figure from the annualized-return card above — realized <i>and</i> unrealized, per year — which is why its method and its number both look different from the yearly rows.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h3>Allocation</h3></div>
+    <div class="alloc-layout">
+      <div class="alloc-chart"><canvas id="pie"></canvas></div>
+      <div class="alloc-list">
+        <table>
+          <thead><tr><th>Asset</th><th>Weight</th><th>Shares</th><th>Avg cost</th></tr></thead>
+          <tbody id="allocTb"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="empty" id="allocEmpty" style="margin-top:16px">
+      <b>No portfolio loaded</b>
+      <p>Click "Import XTB report" and select the .xlsx export from your XTB account. In xStation: <b>Reports</b> → export to Excel. A file that contains an <i>Open Positions</i> sheet fills this tab; one with <i>Closed Positions</i> / <i>Cash Operations</i> fills the Tax tab.</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h3>P/L by position</h3>
+      <div class="toggle-group">
+        <button class="toggle-btn active" data-metric="pct">%</button>
+        <button class="toggle-btn" data-metric="abs">abs</button>
+      </div>
+    </div>
+    <canvas id="plChart"></canvas>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h3>Holdings</h3>
+      <span class="note" id="holdingsNote"></span>
+    </div>
+    <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th class="sortable" data-key="ticker">Position</th>
+        <th class="sortable" data-key="shares">Shares</th>
+        <th class="sortable" data-key="avgCost">Avg cost</th>
+        <th class="sortable" data-key="nativePrice">Price</th>
+        <th class="sortable" data-key="costBasis">Invested</th>
+        <th class="sortable" data-key="value">Market value</th>
+        <th class="sortable" data-key="weight">Weight</th>
+        <th class="sortable" data-key="netProfit">P/L</th>
+        <th class="sortable" data-key="netPct">P/L %</th>
+        <th class="sortable" data-key="ltShare">Held &ge;1y</th>
+      </tr></thead>
+      <tbody id="tb"></tbody>
+    </table>
+    </div>
+    <div class="empty" id="emptyState">
+      <b>No portfolio loaded</b>
+      <p>Your data stays in this file and in your browser — nothing is uploaded anywhere.</p>
+    </div>
+  </div>
+
+  <div class="panel" id="ltPanel" style="display:none">
+    <div class="panel-head">
+      <h3>Holding-period watchlist &mdash; the 365-day rule</h3>
+      <span class="note">Gains on lots held 365 days or more are taxed at the lower rate</span>
+    </div>
+    <div id="ltSummary"></div>
+    <div class="table-wrap" style="margin-top:12px">
+      <table>
+        <thead><tr>
+          <th>Lot</th><th>Opened</th><th>Days held</th><th>Turns long-term</th>
+          <th>Unrealized P/L</th><th>Tax if sold now</th><th>Tax if sold later</th><th>You save</th>
+        </tr></thead>
+        <tbody id="ltTb"></tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top:10px">Estimated on today's unrealized gain converted to RON. The saving is the rate difference only — the market can move a lot more than that, so never let the tax tail wag the investment dog.</p>
+  </div>
+</div>
+
+<!-- ==================== TAB 2 : TAX ==================== -->
+<div class="page" id="page-tax">
+
+  <div id="taxScopeWarn" class="tip warn" style="display:none;margin-bottom:14px"></div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h3>Setup</h3>
+      <span class="note" id="fxStatus"></span>
+    </div>
+    <div class="setup-row">
+      <div class="field">
+        <label>Tax year</label>
+        <select id="taxYear"></select>
+        <span class="hint">Income realised in this calendar year</span>
+      </div>
+      <div class="field">
+        <label>Account currency</label>
+        <select id="curSelect">
+          <option value="auto">Auto-detect</option>
+          <option value="EUR">EUR</option><option value="USD">USD</option>
+          <option value="RON">RON</option><option value="GBP">GBP</option>
+          <option value="PLN">PLN</option><option value="CZK">CZK</option>
+          <option value="HUF">HUF</option><option value="CHF">CHF</option>
+        </select>
+        <span class="hint" id="curHint">Read from the XTB file</span>
+      </div>
+      <div class="field">
+        <label>FX conversion to RON</label>
+        <select id="fxMode">
+          <option value="annual">BNR annual average (per year)</option>
+          <option value="daily">Daily rates (live, per trade date)</option>
+          <option value="fixed">One fixed rate</option>
+        </select>
+        <span class="hint" id="fxHint"></span>
+      </div>
+      <div class="field" id="fixedWrap" style="display:none">
+        <label>Fixed rate (1 unit = ? RON)</label>
+        <input type="number" id="fixedRate" step="0.0001" placeholder="5.2452">
+        <span class="hint">bnr.ro publishes the official rate</span>
+      </div>
+      <div class="field">
+        <label>Gross minimum wage (RON)</label>
+        <input type="number" id="minWage" step="50" placeholder="4050">
+        <span class="hint">Sets the CASS thresholds</span>
+      </div>
+    </div>
+    <p class="fx-note" id="fxDetail"></p>
+  </div>
+
+  <div class="grid-5" style="margin-top:14px">
+    <div class="card">
+      <div class="label">Income counted for CASS</div>
+      <div class="value" id="tCassBase">0 lei</div>
+      <div class="sub" id="tCassBaseSub">no data yet</div>
+    </div>
+    <div class="card">
+      <div class="label">Income tax</div>
+      <div class="value sm" id="tIncomeTax">0 lei</div>
+      <div class="sub" id="tIncomeTaxSub">withheld + payable</div>
+    </div>
+    <div class="card">
+      <div class="label">CASS (health)</div>
+      <div class="value sm" id="tCass">0 lei</div>
+      <div class="sub" id="tCassSub">below first threshold</div>
+    </div>
+    <div class="card accent">
+      <div class="label">Still to pay yourself</div>
+      <div class="value sm" id="tRemaining">0 lei</div>
+      <div class="sub" id="tRemainingSub">income tax due + CASS</div>
+    </div>
+    <div class="card">
+      <div class="label">Total tax burden</div>
+      <div class="value sm" id="tTotal">0 lei</div>
+      <div class="sub" id="tTotalSub">0.0% effective</div>
+    </div>
+  </div>
+
+  <div class="empty" id="taxEmpty" style="margin-top:14px">
+    <b>No trade history imported for this year</b>
+    <p>Export the full year from XTB (<b>Reports</b> → set the date range 1 Jan → 31 Dec → download the .xlsx) and import it above. You can import several files — they are merged and de-duplicated. You can also skip the import entirely and type the figures from your annual <i>Fișă de portofoliu</i> below.</p>
+  </div>
+
+  <!-- capital gains -->
+  <div class="panel">
+    <div class="panel-head">
+      <h3>1 &middot; Capital gains from stock sales</h3>
+      <label class="inline-check"><input type="checkbox" id="useFisa"> Use official <i>Fișă de portofoliu</i> figures instead</label>
+    </div>
+
+    <div id="fisaWrap" style="display:none">
+      <p class="note" style="margin-bottom:12px">XTB issues a <b>Fișă de portofoliu</b> each year (usually by the end of February) with the exact RON amounts already reported to ANAF. Those numbers beat any estimate — type them here.</p>
+      <div class="setup-row">
+        <div class="field"><label>Gain, held &ge;365 days (RON)</label><input type="number" id="fisaGainLT" step="0.01" placeholder="0.00"></div>
+        <div class="field"><label>Gain, held &lt;365 days (RON)</label><input type="number" id="fisaGainST" step="0.01" placeholder="0.00"></div>
+        <div class="field"><label>Losses (RON, for info)</label><input type="number" id="fisaLoss" step="0.01" placeholder="0.00"></div>
+        <div class="field"><label>Tax already withheld (RON)</label><input type="number" id="fisaTax" step="0.01" placeholder="0.00"></div>
+      </div>
+    </div>
+
+    <div id="cgWrap">
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Instrument</th><th>Sales</th><th>Gains &ge;1y</th><th>Gains &lt;1y</th>
+            <th>Losses</th><th>Net</th><th>Taxable (gains only)</th><th>Tax</th><th>Tax rate</th>
+          </tr></thead>
+          <tbody id="cgTb"></tbody>
+          <tfoot id="cgTf"></tfoot>
+        </table>
+      </div>
+      <p class="note" id="cgNote" style="margin-top:12px"></p>
+      <div id="cgRecon"></div>
+    </div>
+  </div>
+
+  <!-- dividends and interest -->
+  <div class="panel">
+    <div class="panel-head">
+      <h3>2 &middot; Dividends &amp; interest from the broker</h3>
+      <span class="note" id="divSource"></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Source</th><th>Gross (RON)</th><th>Tax withheld abroad</th><th>RO tax rate</th>
+          <th>RO tax due</th><th>Foreign tax credit</th><th>Still to pay</th><th>Counts for CASS</th>
+        </tr></thead>
+        <tbody id="divTb"></tbody>
+        <tfoot id="divTf"></tfoot>
+      </table>
+    </div>
+    <p class="note" style="margin-top:10px">"Counts for CASS" is the gross amount minus <b>all</b> tax actually borne on it — what was withheld abroad, plus any Romanian top-up still owed after the foreign tax credit. If the foreign withholding already exceeds the Romanian rate (the usual case once a W-8BEN is on file), that's just gross minus the foreign tax.</p>
+    <div class="setup-row" style="margin-top:14px">
+      <div class="field">
+        <label>Treaty cap for the foreign tax credit</label>
+        <input type="number" id="treatyCap" step="0.5" placeholder="10">
+        <span class="hint">% — RO–US treaty on dividends is 10%</span>
+      </div>
+      <div class="field">
+        <label>Manual override — gross dividends (RON)</label>
+        <input type="number" id="mDivGross" step="0.01" placeholder="from import">
+        <span class="hint">From your annual dividend statement</span>
+      </div>
+      <div class="field">
+        <label>Manual override — foreign tax (RON)</label>
+        <input type="number" id="mDivTax" step="0.01" placeholder="from import">
+      </div>
+      <div class="field">
+        <label>Manual override — gross interest (RON)</label>
+        <input type="number" id="mIntGross" step="0.01" placeholder="from import">
+      </div>
+    </div>
+    <label class="inline-check" style="margin-top:12px"><input type="checkbox" id="intWithheld"> The broker already withheld the tax on interest (check your statement)</label>
+  </div>
+
+  <!-- other income -->
+  <div class="panel">
+    <div class="panel-head">
+      <h3>3 &middot; Your other income</h3>
+      <button class="btn-ghost btn-sm" id="addRow">+ Add income line</button>
+    </div>
+    <p class="note" style="margin-bottom:12px">Everything that lands in the same CASS pot: rent, Romanian dividends, bank interest, crypto, gains at a foreign broker, other sources. Salary and pension are <b>not</b> counted here — they have their own CASS.</p>
+    <div class="scroll-x">
+      <table>
+        <thead><tr>
+          <th style="min-width:150px">Description</th><th style="min-width:230px">Type</th><th>Gross (RON)</th>
+          <th>Tax already withheld</th><th>Taxable base</th><th>Income tax</th><th>Counts for CASS</th><th></th>
+        </tr></thead>
+        <tbody id="otherTb"></tbody>
+        <tfoot id="otherTf"></tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- CASS -->
+  <div class="panel">
+    <div class="panel-head">
+      <h3>4 &middot; CASS &mdash; the health contribution ladder</h3>
+      <span class="note">10% of a fixed base, not of your income</span>
+    </div>
+    <div class="ladder" id="ladder"></div>
+    <div class="marker" id="cassMarker"></div>
+  </div>
+
+  <!-- summary -->
+  <div class="grid-3" style="margin-top:14px">
+    <div class="panel" style="margin-top:0">
+      <h3 style="margin-bottom:12px">Summary</h3>
+      <div id="sumBox"></div>
+    </div>
+    <div class="panel" style="margin-top:0">
+      <h3 style="margin-bottom:12px">What goes in the D212</h3>
+      <div id="d212Box"></div>
+    </div>
+    <div class="panel" style="margin-top:0">
+      <h3 style="margin-bottom:12px">Income mix</h3>
+      <canvas id="mixChart" style="max-height:230px"></canvas>
+      <div id="mixLegend" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+  <!-- tips -->
+  <div class="panel">
+    <div class="panel-head"><h3>5 &middot; How to pay less &mdash; legally</h3></div>
+    <div class="tips" id="tips"></div>
+  </div>
+
+  <div class="panel">
+    <div class="disclaimer">
+      <b>Not tax advice.</b> This is a calculator built from public information about the Romanian Fiscal Code, and it can be wrong — about your case, or about the law after it changes. The authoritative numbers are the ones on your broker's <i>Fișă de portofoliu</i> and your ANAF pre-filled declaration. For anything that matters, ask a licensed tax advisor. Rates, thresholds and the minimum wage are all editable in the <b>Guide &amp; rules</b> tab so this file keeps working when the law moves.
+    </div>
+  </div>
+</div>
+
+<!-- ==================== TAB 3 : GUIDE ==================== -->
+<div class="page" id="page-guide">
+  <div class="panel">
+    <div class="panel-head"><h3>Rates and thresholds &mdash; editable</h3></div>
+    <p class="note" style="margin-bottom:14px">These drive every number in the Tax tab. They ship with the rules as I understand them for each year; when the law changes, edit the row instead of the code. "Reset" restores the built-in values.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Year</th><th>Gain &ge;1y</th><th>Gain &lt;1y</th><th>Dividends</th><th>Interest</th>
+          <th>Crypto / foreign broker</th><th>Rent</th><th>Rent deduction</th><th>CASS</th><th>Min. wage</th><th></th>
+        </tr></thead>
+        <tbody id="rulesTb"></tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top:12px">Percentages, except the last column which is in RON.</p>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h3>How the calculation works</h3></div>
+
+    <details open><summary>Capital gains &mdash; and why losses don't help you</summary>
+      <div class="body">
+        <p>XTB Romania is a local intermediary, so it computes and withholds the tax on every sale <b>at source</b>. The rate depends only on how long you held that particular lot: lower if you held it 365 days or more, higher if less. The tax is final — you don't re-declare the gain for income tax.</p>
+        <p>The catch, and it is a big one: the tax is applied <b>per winning transaction</b>. A loss on another trade does not reduce it. Sell one position for +10.000 lei and another for −10.000 lei in the same year and you are flat in your account but you still pay tax on the 10.000 lei gain — and the loss cannot be carried forward either.</p>
+        <p>The same asymmetry applies to CASS: with a Romanian intermediary, the amount that counts toward the CASS thresholds is the <b>gross gain</b>, not your net result.</p>
+        <p>This is exactly backwards from the usual "harvest your losses in December" advice, which works at a foreign broker (where you self-declare on the net gain) but does nothing for you here. At XTB Romania the only real lever is <b>which sales you make, and when</b>.</p>
+      </div>
+    </details>
+
+    <details><summary>Converting to RON</summary>
+      <div class="body">
+        <p>ANAF works in lei, and so does your broker when it withholds. Each leg of a trade is converted at the rate of its own date: the purchase at the rate on the day you bought, the sale at the rate on the day you sold. That means a gain in RON can be larger than your gain in EUR when the leu weakens between the two dates — and it can even be a RON gain on a EUR loss.</p>
+        <p>Three modes are available. <b>BNR annual average</b> uses one rate per calendar year (the standard reference for foreign income in the D212) and works offline. <b>Daily rates</b> fetches a daily series from the European Central Bank and matches each trade date — closest to what your broker actually did, but it needs an internet connection and ECB and BNR rates differ by a fraction. <b>Fixed rate</b> uses one number you type, which is the simplest and the least accurate.</p>
+        <p>Dividends and interest are converted at the annual average, which is the convention for foreign income in the declaration.</p>
+      </div>
+    </details>
+
+    <details><summary>CASS &mdash; the cliff-edge contribution</summary>
+      <div class="body">
+        <p>CASS on passive income is not a percentage of what you earn. It is 10% of a <b>fixed base</b>, and which base applies depends on which threshold your total passive income crosses. The thresholds are 6, 12 and 24 gross minimum wages.</p>
+        <p>Because it works in steps, one leu can cost you thousands. Land one leu under a threshold and you owe nothing extra; land one leu over it and the whole step is due. This is the single most valuable thing to watch in December.</p>
+        <p>What goes into the pot: rent (after the standard deduction), dividends (net of the tax withheld), interest (net), crypto gains, gains at a foreign broker (net), gross gains at a Romanian broker, and other sources. What stays out: salary and pension — those are covered by their own CASS, and paying CASS twice on passive income is normal, not a bug.</p>
+        <p>Being employed does not exempt you. If your passive income crosses the threshold, you owe this on top of the CASS deducted from your payslip.</p>
+      </div>
+    </details>
+
+    <details><summary>Dividends from abroad and the foreign tax credit</summary>
+      <div class="body">
+        <p>Dividends from foreign shares are not taxed at source by a Romanian payer, so you declare them yourself in the D212 and pay the Romanian rate on the gross amount. Tax already paid abroad becomes a <b>credit</b> against that — but only up to the rate agreed in the double-taxation treaty with that country. For the US that is 10%.</p>
+        <p>If your broker withholds the full US statutory 30% instead of the treaty 10%, the extra 20% is simply lost: Romania will not credit it and the US will not refund it automatically. The fix is a <b>W-8BEN</b> form with your broker, which takes minutes and applies to all future dividends. The Tax tab flags this automatically if it sees an effective rate above 15%.</p>
+      </div>
+    </details>
+
+    <details><summary>Filing the D212 (Declarația Unică)</summary>
+      <div class="body">
+        <p>The declaration for a given year is filed by <b>25 May of the following year</b>, online through the ANAF SPV. What you actually fill in:</p>
+        <ul>
+          <li>Capital gains through XTB Romania: <b>nothing</b> for income tax — the tax was already withheld and is final.</li>
+          <li>Foreign dividends and interest: Chapter I, Section 2, Subsection 1 — one block per country, with the gross income, the tax paid abroad and the credit claimed.</li>
+          <li>CASS: Chapter I, Section 3, Subsection 2 — the base you landed on and the 10%.</li>
+          <li>Rent, crypto, other sources: their own sections in Chapter I.</li>
+        </ul>
+        <p>Chapter II is a separate matter: it is where you <i>opt in</i> to pay CASS voluntarily for the current year when you are below the thresholds and not otherwise insured.</p>
+        <p>There has historically been a small bonus for paying early, and it applies only to the income tax, never to CASS. Check whether it is still in force for your year before counting on it.</p>
+      </div>
+    </details>
+
+    <details><summary>Reading your XTB documents</summary>
+      <div class="body">
+        <p><b>Fișă de portofoliu</b> — the annual statement of gains and losses per country, in RON, with the tax withheld. This is what ANAF sees. Type it into section 1 of the Tax tab and tick the override box.</p>
+        <p><b>Raport dividende și dobânzi</b> — gross dividends, tax withheld at source, net, plus interest paid on your free cash. Cross-check it against what the import found.</p>
+        <p><b>Closed positions export</b> — per-trade detail: open date, close date, purchase and sale value. This is what lets the tool split gains by holding period and estimate the RON conversion. Export the whole calendar year.</p>
+        <p><b>Cash operations</b> — dividends, withholding tax, free-funds interest and the "RO tax" lines showing exactly what XTB withheld in lei. The tool reads the RON amount out of those lines and reconciles it against its own estimate.</p>
+      </div>
+    </details>
+
+    <details><summary>Privacy, sharing and where your data lives</summary>
+      <div class="body">
+        <p>Everything runs in your browser. The file never uploads your positions anywhere; it stores them in this browser's local storage so they survive a refresh. The only outbound request is the optional exchange-rate lookup, which sends no personal data.</p>
+        <p>If you share this file with family or friends, share the <b>file</b>, not your browser — they will open it empty and import their own export. Nothing personal is baked into the HTML.</p>
+        <p>"Clear data" wipes the stored state on this device.</p>
+      </div>
+    </details>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h3>Glossary</h3></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Romanian</th><th>What it means</th></tr></thead>
+        <tbody>
+          <tr><td style="font-family:var(--sans)">Declarația Unică (D212)</td><td style="font-family:var(--sans);white-space:normal">The single annual form for personal income tax and social contributions</td></tr>
+          <tr><td style="font-family:var(--sans)">Fișă de portofoliu</td><td style="font-family:var(--sans);white-space:normal">Annual portfolio statement your broker issues and reports to ANAF</td></tr>
+          <tr><td style="font-family:var(--sans)">CASS</td><td style="font-family:var(--sans);white-space:normal">Health insurance contribution, 10% of a threshold-based fixed amount</td></tr>
+          <tr><td style="font-family:var(--sans)">CAS</td><td style="font-family:var(--sans);white-space:normal">Pension contribution, 25% — not due on investment income or rent</td></tr>
+          <tr><td style="font-family:var(--sans)">Câștig / pierdere</td><td style="font-family:var(--sans);white-space:normal">Gain / loss</td></tr>
+          <tr><td style="font-family:var(--sans)">Reținut la sursă</td><td style="font-family:var(--sans);white-space:normal">Withheld at source by the payer, so you don't pay it again</td></tr>
+          <tr><td style="font-family:var(--sans)">Credit fiscal</td><td style="font-family:var(--sans);white-space:normal">Foreign tax credit for tax already paid abroad</td></tr>
+          <tr><td style="font-family:var(--sans)">Cotă forfetară</td><td style="font-family:var(--sans);white-space:normal">Flat deduction allowed without receipts (20% on ordinary rent)</td></tr>
+          <tr><td style="font-family:var(--sans)">Salariu minim brut</td><td style="font-family:var(--sans);white-space:normal">Gross minimum wage — the yardstick for the CASS thresholds</td></tr>
+          <tr><td style="font-family:var(--sans)">Venituri din investiții</td><td style="font-family:var(--sans);white-space:normal">Investment income: gains, dividends, interest</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h3>Where these rules come from</h3></div>
+    <p class="note">Law 227/2015 (the Fiscal Code) as amended — notably Law 141/2025, which raised the investment tax rates and the dividend rate from 1 January 2026 — plus the ANAF instructions for the D212 and the published minimum-wage decisions that set the CASS thresholds. Exchange rates: bnr.ro is authoritative; the live lookup here uses the European Central Bank daily series, which is close but not identical. Everything in this file was assembled in August 2026 — if you are reading it much later, check the rates table above against the current law before trusting the output.</p>
+  </div>
+
+  <div class="footer-note">Built as a personal tool. Verify before you file.</div>
+</div>
+
+  <div class="footer-note" id="footerNote"></div>
+</div>
+<script>
+/* Work even when the CDN is unreachable: charts degrade, everything else keeps running. */
+if(typeof Chart === 'undefined'){
+  window.Chart = function(){ return {destroy:function(){}}; };
+  window.Chart.register = function(){};
+}
+if(typeof ChartDataLabels === 'undefined') window.ChartDataLabels = {};
+Chart.register(ChartDataLabels);
+
+/* ==================================================================
+   CONSTANTS
+   ================================================================== */
+const STORAGE_KEY = 'xtb_tracker_state_v2';
+const LEGACY_KEY  = 'xtb_dashboard_state_v1';
+
+const SYM = {EUR:'\u20ac', USD:'$', GBP:'\u00a3', CHF:'CHF ', RON:'', PLN:'', CZK:'', HUF:''};
+const SUF = {RON:' lei', PLN:' z\u0142', CZK:' K\u010d', HUF:' Ft'};
+
+/* Built-in tax rules per year. All rates as decimals; minWage in RON. */
+const BUILTIN_RULES = {
+  2023:{ltCap:0.01, stCap:0.03, div:0.08, interest:0.10, crypto:0.10, rent:0.10, rentDeduct:0.20, cass:0.10, minWage:3000},
+  2024:{ltCap:0.01, stCap:0.03, div:0.08, interest:0.10, crypto:0.10, rent:0.10, rentDeduct:0.20, cass:0.10, minWage:3300},
+  2025:{ltCap:0.01, stCap:0.03, div:0.10, interest:0.10, crypto:0.10, rent:0.10, rentDeduct:0.20, cass:0.10, minWage:4050},
+  2026:{ltCap:0.03, stCap:0.06, div:0.16, interest:0.10, crypto:0.16, rent:0.10, rentDeduct:0.20, cass:0.10, minWage:4050},
+  2027:{ltCap:0.03, stCap:0.06, div:0.16, interest:0.10, crypto:0.16, rent:0.10, rentDeduct:0.20, cass:0.10, minWage:4050}
+};
+
+/* BNR annual average rates (1 unit = X RON). 2026 is provisional: current spot. */
+const BUILTIN_FX = {
+  EUR:{2021:4.9204, 2022:4.9315, 2023:4.9465, 2024:4.9746, 2025:5.0415, 2026:5.2452},
+  USD:{2021:4.1604, 2022:4.6883, 2023:4.5734, 2024:4.5984, 2025:4.4705, 2026:4.5190},
+  RON:{2021:1, 2022:1, 2023:1, 2024:1, 2025:1, 2026:1}
+};
+const PROVISIONAL_YEAR = 2026;
+
+const CATS = {
+  rent:       {label:'Rent \u2014 standard (chirii, 20% deduction)',      deduct:'rentDeduct', rate:'rent',     cass:'base'},
+  rentTour:   {label:'Rent \u2014 tourist rooms (30% deduction)',         deduct:0.30,          rate:'rent',     cass:'base'},
+  divRO:      {label:'Romanian dividends (withheld by payer)',            deduct:0,             rate:'div',      cass:'afterTax'},
+  divFor:     {label:'Foreign dividends \u2014 another broker',           deduct:0,             rate:'div',      cass:'afterForeign'},
+  interest:   {label:'Interest \u2014 bank or broker',                    deduct:0,             rate:'interest', cass:'afterTax'},
+  crypto:     {label:'Crypto \u2014 net gain for the year',               deduct:0,             rate:'crypto',   cass:'base'},
+  foreignBrk: {label:'Capital gains \u2014 foreign broker (net gain)',    deduct:0,             rate:'crypto',   cass:'base'},
+  otherSrc:   {label:'Other sources (alte surse)',                        deduct:0,             rate:'rent',     cass:'base'},
+  noCass:     {label:'Income NOT counted for CASS (salary, pension\u2026)',deduct:0,            rate:'zero',     cass:'none'}
+};
+
+const PALETTE = ['#e8a33d','#34d399','#60a5fa','#f472b6','#a78bfa','#fb923c','#22d3ee','#facc15','#4ade80','#f87171','#818cf8','#2dd4bf'];
+
+/* ==================================================================
+   STATE
+   ================================================================== */
+let S = {
+  v:3,
+  accounts:{},
+  activeView:'all', viewCcy:'',
+  tax:{
+    year:new Date().getFullYear(),
+    fxMode:'annual', fixedRate:null, fxAnnual:{}, daily:{}, dailyMeta:{},
+    minWage:null, treatyCap:10,
+    useFisa:false, fisa:{gainLT:'', gainST:'', loss:'', tax:''},
+    mDivGross:'', mDivTax:'', mIntGross:'', intWithheld:false,
+    other:[], rules:{}
+  }
+};
+
+let sortKey='value', sortDir=-1, plMetric='pct';
+let pieChart, plChartInstance, mixChartInstance;
+
+/* ==================================================================
+   HELPERS
+   ================================================================== */
+const $ = id => document.getElementById(id);
+function nf(n, d){ if(!isFinite(n)) n = 0; return n.toLocaleString('en-US',{minimumFractionDigits:d, maximumFractionDigits:d}); }
+function accountKeys(){ return Object.keys(S.accounts||{}); }
+function emptyAccount(key){
+  return {currency:'', currencyChoice:'auto', positions:[], lots:[], closed:[], cashOps:[], ranges:[], cash:null, accountNumber:key||'', reportDate:''};
+}
+function ensureAccount(key){
+  if(!S.accounts[key]) S.accounts[key] = emptyAccount(key);
+  return S.accounts[key];
+}
+function accountCcy(key){
+  const a = S.accounts[key]; if(!a) return 'EUR';
+  return (a.currencyChoice && a.currencyChoice!=='auto') ? a.currencyChoice : (a.currency || 'EUR');
+}
+function accountLabel(key){
+  const a = S.accounts[key]; if(!a) return key;
+  const tail = a.accountNumber ? ' \u2026'+String(a.accountNumber).slice(-4) : '';
+  return accountCcy(key)+' account'+tail;
+}
+function viewCurrency(){
+  if(S.activeView !== 'all' && S.accounts[S.activeView]) return accountCcy(S.activeView);
+  const keys = accountKeys();
+  return S.viewCcy || (keys.length ? accountCcy(keys[0]) : 'EUR');
+}
+function cur(){ return viewCurrency(); }
+function rateAtCcy(from, to, date){
+  if(!from || !to || from===to) return 1;
+  const f = rateAt(from, date), t = rateAt(to, date);
+  if(!f || !t) return null;
+  return f / t;
+}
+/* Portfolio-tab data, in one reporting currency (the active account's own
+   currency, or S.viewCcy when viewing "All accounts" combined). */
+function view(){
+  const keys = accountKeys();
+  if(S.activeView !== 'all' && S.accounts[S.activeView]){
+    const a = S.accounts[S.activeView];
+    return {
+      currency: accountCcy(S.activeView),
+      positions:a.positions||[], lots:a.lots||[], closed:a.closed||[], cashOps:a.cashOps||[], ranges:a.ranges||[],
+      cash:a.cash, accountNumber:a.accountNumber||'', reportDate:a.reportDate||'',
+      isCombined:false, accountKey:S.activeView
+    };
+  }
+  const target = viewCurrency();
+  const positions=[], lots=[], closed=[], cashOps=[], ranges=[];
+  let cash=0;
+  const now = new Date();
+  keys.forEach(key=>{
+    const a = S.accounts[key], c = accountCcy(key);
+    const fxNow = rateAtCcy(c, target, now) || 1;
+    (a.positions||[]).forEach(p=>{
+      positions.push(Object.assign({}, p, {
+        value:p.value*fxNow, costBasis:p.costBasis*fxNow, netProfit:p.netProfit*fxNow, avgCost:p.avgCost*fxNow,
+        _srcAccount:key
+      }));
+    });
+    (a.lots||[]).forEach(l=> lots.push(Object.assign({}, l, {
+      value:l.value*fxNow, netProfit:l.netProfit*fxNow, openPrice:l.openPrice*fxNow, _srcAccount:key
+    })) );
+    (a.closed||[]).forEach(t=>{
+      const fo = rateAtCcy(c, target, t.openTime||t.closeTime) || 1;
+      const fc = rateAtCcy(c, target, t.closeTime) || 1;
+      closed.push(Object.assign({}, t, {
+        purchase:t.purchase*fo, sale:t.sale*fc,
+        gross:(t.gross!=null?t.gross:(t.sale-t.purchase))*fc,
+        _srcAccount:key
+      }));
+    });
+    (a.cashOps||[]).forEach(o=>{
+      const f = rateAtCcy(c, target, o.time) || 1;
+      cashOps.push(Object.assign({}, o, {amount:o.amount*f, _srcAccount:key}));
+    });
+    (a.ranges||[]).forEach(r=>ranges.push(r));
+    cash += (Number(a.cash)||0) * fxNow;
+  });
+  return {currency:target, positions, lots, closed, cashOps, ranges, cash, accountNumber:'', reportDate:'', isCombined:true, accountKey:'all'};
+}
+/* Tax-tab data: every closed trade / cash-op keeps its OWN account currency
+   (tagged as _ccy) so computeTax() converts each to RON directly, rather than
+   round-tripping through a display currency. */
+function taxData(){
+  if(S.activeView !== 'all' && S.accounts[S.activeView]){
+    const a = S.accounts[S.activeView], c = accountCcy(S.activeView);
+    return {
+      closed:(a.closed||[]).map(t=>Object.assign({}, t, {_ccy:c})),
+      cashOps:(a.cashOps||[]).map(o=>Object.assign({}, o, {_ccy:c})),
+      ranges:a.ranges||[], isCombined:false, label:accountLabel(S.activeView)
+    };
+  }
+  let closed=[], cashOps=[], ranges=[];
+  accountKeys().forEach(key=>{
+    const a = S.accounts[key], c = accountCcy(key);
+    (a.closed||[]).forEach(t=>closed.push(Object.assign({}, t, {_ccy:c})));
+    (a.cashOps||[]).forEach(o=>cashOps.push(Object.assign({}, o, {_ccy:c})));
+    (a.ranges||[]).forEach(r=>ranges.push(r));
+  });
+  return {closed, cashOps, ranges, isCombined:true, label:'All accounts'};
+}
+function money(n, c){
+  c = c || cur();
+  const neg = n < 0;
+  return (neg?'-':'') + (SYM[c]!==undefined?SYM[c]:c+' ') + nf(Math.abs(n),2) + (SUF[c]||'');
+}
+function ron(n, d){ d = (d===undefined)?0:d; return nf(n, d) + ' lei'; }
+function pct(n){ return (n>=0?'+':'') + n.toFixed(2) + '%'; }
+function cleanTicker(t){ return (t||'').replace(/\.[A-Z]{2,3}$/i,''); }
+function iso(d){ return d instanceof Date && !isNaN(d) ? d.toISOString().slice(0,10) : ''; }
+function daysBetween(a,b){ return (b-a)/86400000; }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function toDate(v){
+  if(v instanceof Date) return isNaN(v)?null:v;
+  if(typeof v === 'number' && v > 20000 && v < 90000) return new Date(Math.round((v-25569)*86400000));
+  if(typeof v === 'string' && v.trim()){ const d = new Date(v); return isNaN(d)?null:d; }
+  return null;
+}
+function rulesFor(y){
+  const base = BUILTIN_RULES[y] || BUILTIN_RULES[2027];
+  return Object.assign({}, base, S.tax.rules[y] || {});
+}
+function minWage(){
+  const m = Number(S.tax.minWage);
+  return (S.tax.minWage!=='' && S.tax.minWage!=null && isFinite(m) && m>0) ? m : rulesFor(S.tax.year).minWage;
+}
+
+/* ==================================================================
+   PERSISTENCE
+   ================================================================== */
+function save(){
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(S)); }catch(e){ /* private mode / sandbox */ }
+}
+function fixDatesInAccount(A){
+  (A.closed||[]).forEach(t=>{ t.openTime=toDate(t.openTime); t.closeTime=toDate(t.closeTime); });
+  (A.cashOps||[]).forEach(c=>{ c.time=toDate(c.time); });
+  (A.lots||[]).forEach(l=>{ l.openTime=toDate(l.openTime); });
+  (A.ranges||[]).forEach(r=>{ r.from=toDate(r.from); r.to=toDate(r.to); });
+}
+function load(){
+  let raw = null;
+  try{ raw = localStorage.getItem(STORAGE_KEY); }catch(e){}
+  if(raw){
+    try{
+      const o = JSON.parse(raw);
+      if(o.accounts){
+        S = Object.assign(S, o);
+        S.accounts = o.accounts || {};
+      } else if(o.positions || o.closed || o.cashOps){
+        /* migrate from the pre-multi-account (v2) single-account shape */
+        const key = o.accountNumber || 'account1';
+        S.accounts = {};
+        S.accounts[key] = {
+          currency:o.currency||'', currencyChoice:o.currencyChoice||'auto',
+          positions:o.positions||[], lots:o.lots||[], closed:o.closed||[], cashOps:o.cashOps||[], ranges:o.ranges||[],
+          cash:(o.cash!=null?o.cash:null), accountNumber:o.accountNumber||key, reportDate:o.reportDate||''
+        };
+        S.activeView = key;
+      }
+      S.activeView = o.activeView || S.activeView || 'all';
+      S.viewCcy = o.viewCcy || '';
+      S.tax = Object.assign({year:new Date().getFullYear(), fxMode:'annual', fxAnnual:{}, daily:{}, dailyMeta:{}, treatyCap:10, fisa:{}, other:[], rules:{}}, o.tax||{});
+      accountKeys().forEach(k=>fixDatesInAccount(S.accounts[k]));
+    }catch(e){ console.warn('state reset', e); }
+    return;
+  }
+  try{
+    const old = localStorage.getItem(LEGACY_KEY);
+    if(old){
+      const o = JSON.parse(old);
+      const key = o.accountNumber || 'account1';
+      S.accounts[key] = {
+        currency:'', currencyChoice:'auto',
+        positions:(o.positions||[]).map(p=>Object.assign({avgCost:p.avgCostEUR}, p)),
+        lots:[], closed:[], cashOps:[], ranges:[],
+        cash:o.cash, accountNumber:o.accountNumber||'', reportDate:o.reportDate||''
+      };
+      S.activeView = key;
+    }
+  }catch(e){}
+}
+
+/* ==================================================================
+   PARSING XTB WORKBOOKS
+   ================================================================== */
+function norm(s){ return String(s==null?'':s).trim().toLowerCase(); }
+
+function grid(wb, match){
+  const name = wb.SheetNames.find(s => norm(s).includes(match));
+  if(!name) return null;
+  return XLSX.utils.sheet_to_json(wb.Sheets[name], {header:1, defval:''});
+}
+function findHeader(rows, must){
+  for(let i=0;i<rows.length;i++){
+    const set = rows[i].map(norm);
+    if(must.every(m => set.includes(m))) return i;
+  }
+  return -1;
+}
+function colmap(header){
+  const m = {};
+  header.forEach((h,i)=>{ m[norm(h)] = i; });
+  return (...names)=>{ for(const n of names){ if(m[norm(n)]!==undefined) return m[norm(n)]; } return -1; };
+}
+function metaValue(rows, label){
+  for(const r of rows){ if(norm(r[0])===norm(label)) return r[1]; }
+  return '';
+}
+
+function detectCurrency(wb){
+  for(const sn of wb.SheetNames){
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, defval:''});
+    for(let i=0;i<Math.min(rows.length,40);i++){
+      const ci = rows[i].findIndex(c => norm(c)==='currency');
+      if(ci>=0){
+        for(let j=i+1;j<Math.min(rows.length,i+12);j++){
+          const v = String(rows[j][ci]||'').trim().toUpperCase();
+          if(/^[A-Z]{3}$/.test(v)) return v;
+        }
+      }
+    }
+  }
+  return '';
+}
+
+function parseOpen(wb){
+  const rows = grid(wb, 'open position');
+  if(!rows) return null;
+  const hi = findHeader(rows, ['ticker','current price']);
+  if(hi<0) return null;
+  const c = colmap(rows[hi]);
+  const iInstr=c('instrument/position','instrument'), iTick=c('ticker'), iCat=c('category'), iType=c('type'),
+        iVol=c('volume'), iVal=c('value'), iCur=c('current price'), iPct=c('net profit %'),
+        iNet=c('net profit'), iOpen=c('open time (utc)','open time'), iOpenPx=c('open price');
+
+  const positions=[], lots=[], native={};
+  rows.slice(hi+1).forEach(r=>{
+    if(!r[iTick]) return;
+    const type = String(r[iType]||'').trim();
+    const cat  = String(r[iCat]||'').trim();
+    if(cat === 'STOCK' && !type){
+      const shares=Number(r[iVol])||0, value=Number(r[iVal])||0,
+            netProfit=Number(r[iNet])||0, netPct=Number(r[iPct])||0;
+      positions.push({
+        ticker:r[iTick], company:r[iInstr]||r[iTick], shares, value, netProfit, netPct,
+        costBasis:value-netProfit, avgCost: shares? (value-netProfit)/shares : 0
+      });
+    } else if(type === 'BUY' || type === 'SELL'){
+      const t = r[iTick];
+      if(!(t in native)){ const cp = Number(r[iCur]); if(cp) native[t]=cp; }
+      lots.push({
+        ticker:t, id:String(r[iInstr]||''), volume:Number(r[iVol])||0, value:Number(r[iVal])||0,
+        netProfit:Number(r[iNet])||0, openPrice:Number(r[iOpenPx])||0, openTime: iOpen>=0? toDate(r[iOpen]) : null
+      });
+    }
+  });
+  if(!positions.length) return null;
+  positions.forEach(p=>{ p.nativePrice = native[p.ticker] || null; });
+  return {
+    positions, lots,
+    accountNumber:String(metaValue(rows,'Account number')||''),
+    reportDate: toDate(metaValue(rows,'Data as of report generated'))
+  };
+}
+
+function parseClosed(wb){
+  const rows = grid(wb, 'closed position');
+  if(!rows) return null;
+  const hi = findHeader(rows, ['ticker','purchase value']);
+  if(hi<0) return null;
+  const c = colmap(rows[hi]);
+  const iInstr=c('instrument'), iTick=c('ticker'), iType=c('type'), iVol=c('volume'),
+        iOpenT=c('open time (utc)','open time'), iCloseT=c('close time (utc)','close time'),
+        iBuy=c('purchase value'), iSell=c('sale value'), iGross=c('gross profit','profit/loss'),
+        iComm=c('commission'), iPid=c('position id'), iNote=c('comment');
+  const out=[];
+  rows.slice(hi+1).forEach(r=>{
+    if(!r[iTick]) return;
+    const closeTime = toDate(r[iCloseT]);
+    if(!closeTime) return;
+    const purchase = Number(r[iBuy])||0, sale = Number(r[iSell])||0;
+    out.push({
+      ticker:r[iTick], company:r[iInstr]||r[iTick], type:String(r[iType]||''),
+      volume:Number(r[iVol])||0, openTime: toDate(r[iOpenT]), closeTime,
+      purchase, sale, gross:Number(r[iGross])||(sale-purchase),
+      commission:Number(r[iComm])||0, pid:String(r[iPid]||''), note:String(r[iNote]||'')
+    });
+  });
+  return {trades:out, from:toDate(metaValue(rows,'Date from (UTC)')), to:toDate(metaValue(rows,'Date to (UTC)')),
+           accountNumber:String(metaValue(rows,'Account number')||'')};
+}
+
+function parseCash(wb){
+  const rows = grid(wb, 'cash operation');
+  if(!rows) return null;
+  const hi = findHeader(rows, ['type','amount','comment']);
+  if(hi<0) return null;
+  const c = colmap(rows[hi]);
+  const iType=c('type'), iInstr=c('instrument'), iTick=c('ticker'), iTime=c('time'),
+        iAmt=c('amount'), iId=c('id'), iCom=c('comment');
+  const out=[];
+  rows.slice(hi+1).forEach(r=>{
+    const t = String(r[iType]||'').trim();
+    if(!t) return;
+    const time = toDate(r[iTime]);
+    if(!time) return;
+    out.push({
+      type:t, instrument:String(r[iInstr]||''), ticker:String(r[iTick]||''), time,
+      amount:Number(r[iAmt])||0, id:String(r[iId]||''), comment:String(r[iCom]||'')
+    });
+  });
+  return {ops:out, from:toDate(metaValue(rows,'Date from (UTC)')), to:toDate(metaValue(rows,'Date to (UTC)')),
+          accountNumber:String(metaValue(rows,'Account number')||'')};
+}
+
+function importWorkbook(wb){
+  const found = [];
+  const op = parseOpen(wb);
+  const cl = parseClosed(wb);
+  const ca = parseCash(wb);
+  const acctNum = (op && op.accountNumber) || (cl && cl.accountNumber) || (ca && ca.accountNumber) || '';
+  const key = acctNum || 'unknown';
+  const A = ensureAccount(key);
+  A.accountNumber = acctNum || A.accountNumber;
+
+  const c = detectCurrency(wb);
+  if(c){ A.currency = c; found.push('currency ' + c); }
+
+  if(op){
+    A.positions = op.positions;
+    A.lots = op.lots;
+    A.reportDate = op.reportDate || A.reportDate;
+    found.push(op.positions.length + ' open positions');
+  }
+
+  if(cl && cl.trades.length){
+    const seen = new Set(A.closed.map(keyOfTrade));
+    let added = 0;
+    cl.trades.forEach(t=>{ const k = keyOfTrade(t); if(!seen.has(k)){ seen.add(k); A.closed.push(t); added++; } });
+    if(cl.from && cl.to) mergeRange(A, cl.from, cl.to);
+    found.push(added + ' closed trades');
+  }
+
+  if(ca && ca.ops.length){
+    const seen = new Set(A.cashOps.map(keyOfOp));
+    let added = 0;
+    ca.ops.forEach(o=>{ const k = keyOfOp(o); if(!seen.has(k)){ seen.add(k); A.cashOps.push(o); added++; } });
+    if(ca.from && ca.to) mergeRange(A, ca.from, ca.to);
+    found.push(added + ' cash operations');
+  }
+
+  if(!found.length) throw new Error('This file has no Open Positions, Closed Positions or Cash Operations sheet that I can read.');
+  A.closed.sort((a,b)=>b.closeTime-a.closeTime);
+  A.cashOps.sort((a,b)=>b.time-a.time);
+  if(accountKeys().length > 1) S.activeView = 'all';
+  else S.activeView = key;
+  return found.map(m=>'['+accountLabel(key)+'] '+m);
+}
+function keyOfTrade(t){ return t.pid+'|'+(t.closeTime?t.closeTime.getTime():0)+'|'+t.sale+'|'+t.purchase; }
+function keyOfOp(o){ return o.id ? 'id:'+o.id : o.type+'|'+o.time.getTime()+'|'+o.amount+'|'+o.comment; }
+function mergeRange(A, from, to){
+  A.ranges = A.ranges || [];
+  const k = iso(from)+'|'+iso(to);
+  if(A.ranges.some(r=>iso(r.from)+'|'+iso(r.to) === k)) return;
+  A.ranges.push({from, to});
+  A.ranges.sort((a,b)=>a.from-b.from);
+}
+
+/* ==================================================================
+   FX
+   ================================================================== */
+function annualRate(c, year){
+  if(c === 'RON') return 1;
+  const ov = (S.tax.fxAnnual[c]||{});
+  if(ov[year]!==undefined && ov[year]!=='' && isFinite(Number(ov[year]))) return Number(ov[year]);
+  const bi = BUILTIN_FX[c]||{};
+  if(bi[year]!==undefined) return bi[year];
+  const all = {}; Object.keys(bi).forEach(y=>all[y]=bi[y]);
+  Object.keys(ov).forEach(y=>{ if(ov[y]!=='' && isFinite(Number(ov[y]))) all[y]=Number(ov[y]); });
+  const ys = Object.keys(all).map(Number);
+  if(!ys.length) return null;
+  let best = ys[0];
+  ys.forEach(y=>{ if(Math.abs(y-year) < Math.abs(best-year)) best = y; });
+  return all[best];
+}
+function dailyRate(c, date){
+  const tab = S.tax.daily[c];
+  if(!tab) return null;
+  const d = new Date(date.getTime());
+  for(let i=0;i<12;i++){
+    const k = iso(d);
+    if(tab[k]) return tab[k];
+    d.setDate(d.getDate()-1);
+  }
+  return null;
+}
+function rateAt(c, date){
+  if(c === 'RON') return 1;
+  if(S.tax.fxMode === 'fixed'){
+    const r = Number(S.tax.fixedRate);
+    return (isFinite(r) && r>0) ? r : (annualRate(c, S.tax.year) || 1);
+  }
+  if(S.tax.fxMode === 'daily' && date){
+    const r = dailyRate(c, date);
+    if(r) return r;
+  }
+  return annualRate(c, date ? date.getFullYear() : S.tax.year);
+}
+function fxAvailable(c, year){
+  if(c === 'RON') return true;
+  if(S.tax.fxMode==='fixed') return isFinite(Number(S.tax.fixedRate)) && Number(S.tax.fixedRate)>0;
+  return annualRate(c, year) != null;
+}
+
+async function fetchDailyRates(){
+  const c = cur();
+  if(c === 'RON'){ setFxStatus('ok','RON account \u2014 no conversion needed'); return; }
+  let earliest = new Date();
+  taxData().closed.forEach(t=>{ if(t.openTime && t.openTime < earliest) earliest = t.openTime; });
+  view().lots.forEach(l=>{ if(l.openTime && l.openTime < earliest) earliest = l.openTime; });
+  const from = iso(new Date(Math.min(earliest.getTime(), new Date(S.tax.year,0,1).getTime())));
+  const to = iso(new Date());
+  const urls = [
+    'https://api.frankfurter.dev/v1/'+from+'..'+to+'?base='+c+'&symbols=RON',
+    'https://api.frankfurter.app/'+from+'..'+to+'?base='+c+'&symbols=RON'
+  ];
+  setFxStatus('load','fetching daily rates\u2026');
+  for(const u of urls){
+    try{
+      const res = await fetch(u);
+      if(!res.ok) continue;
+      const j = await res.json();
+      if(!j.rates) continue;
+      const tab = {};
+      Object.keys(j.rates).forEach(d=>{ if(j.rates[d].RON) tab[d] = j.rates[d].RON; });
+      const n = Object.keys(tab).length;
+      if(!n) continue;
+      S.tax.daily[c] = tab;
+      S.tax.dailyMeta[c] = {fetched:new Date().toISOString(), from, to, n};
+      save();
+      setFxStatus('ok', n + ' daily ' + c + '/RON rates loaded');
+      renderTax();
+      return;
+    }catch(e){ /* try next */ }
+  }
+  setFxStatus('err','couldn\u2019t reach the rate service \u2014 falling back to annual averages');
+  S.tax.fxMode = 'annual';
+  $('fxMode').value = 'annual';
+  renderTax();
+}
+function setFxStatus(kind, msg){
+  const cls = kind==='ok'?'':(kind==='err'?'err':'off');
+  $('fxStatus').innerHTML = '<span class="status-dot '+cls+'"></span>' + esc(msg);
+}
+
+/* ==================================================================
+   TAB 1 - PORTFOLIO
+   ================================================================== */
+function totals(){
+  const V = view();
+  const posValue = V.positions.reduce((s,p)=>s+p.value,0);
+  const costBasis = V.positions.reduce((s,p)=>s+p.costBasis,0);
+  const pl = posValue - costBasis;
+  const plPct = costBasis ? (pl/costBasis*100) : 0;
+  const cash = Number(V.cash)||0;
+  return {posValue, costBasis, pl, plPct, cash, total: posValue+cash};
+}
+function computeDeposits(){
+  const V = view();
+  let deposited=0, withdrawn=0, depN=0, witN=0, divIncome=0, intIncome=0;
+  V.cashOps.forEach(o=>{
+    const t = o.type.toLowerCase();
+    if(t.indexOf('deposit')>=0){ deposited += o.amount; depN++; }
+    else if(t.indexOf('withdraw')>=0){ withdrawn += Math.abs(o.amount); witN++; }
+    else if(t === 'dividend'){ divIncome += o.amount; }
+    else if(t.indexOf('interest')>=0){ intIncome += o.amount; }
+  });
+  const net = deposited - withdrawn;
+  const realizedTrading = V.closed.reduce((s,t)=>s+(t.gross!=null && isFinite(t.gross) ? t.gross : (t.sale-t.purchase)),0);
+  const realizedIncome = divIncome + intIncome;
+  const realizedProfit = realizedTrading + realizedIncome;
+  const t = totals();
+  const unrealizedPL = t.pl;
+  const totalReturn = realizedProfit + unrealizedPL;
+  return {
+    deposited, withdrawn, net, depN, witN,
+    realizedTrading, divIncome, intIncome, realizedIncome, realizedProfit,
+    unrealizedPL, totalReturn,
+    currentValue: t.total, tradesN: V.closed.length,
+    hasData: depN+witN>0 || V.closed.length>0 || divIncome!==0 || intIncome!==0
+  };
+}
+function renderDeposits(){
+  const V = view();
+  const D = computeDeposits();
+  $('perfEmpty').style.display = D.hasData ? 'none' : 'block';
+  $('perfBody').style.display = D.hasData ? 'block' : 'none';
+  if(!D.hasData) return;
+  $('pDeposited').textContent = money(D.deposited);
+  $('pDepositedSub').textContent = D.depN ? (D.depN + ' deposit' + (D.depN===1?'':'s') + ' found') : 'none found in the import';
+  $('pWithdrawn').textContent = money(D.withdrawn);
+  $('pWithdrawnSub').textContent = D.witN ? (D.witN + ' withdrawal' + (D.witN===1?'':'s')) : 'none found';
+  $('pNet').textContent = money(D.net);
+  $('pPerf').textContent = money(D.realizedProfit);
+  $('pPerfSub').textContent = D.tradesN ? (D.tradesN + ' closed sale' + (D.tradesN===1?'':'s') + ' + dividends/interest') : 'dividends & interest only \u2014 no closed sales imported';
+  const c = $('pPerfCard'); c.classList.remove('pos','neg'); c.classList.add(D.realizedProfit>=0?'pos':'neg');
+
+  $('bRealizedTrading').textContent = money(D.realizedTrading);
+  $('bRealizedIncome').textContent = money(D.realizedIncome);
+  $('bRealizedTotal').textContent = money(D.realizedProfit);
+  $('bUnrealized').textContent = money(D.unrealizedPL);
+  $('bTotalReturn').textContent = money(D.totalReturn);
+
+  const contribAbs = Math.max(D.net,0);
+  const gainAbs = Math.max(D.totalReturn,0);
+  const lossAbs = Math.max(-D.totalReturn,0);
+  const denom = (contribAbs+gainAbs+lossAbs) || 1;
+  $('perfBar').innerHTML =
+    '<div class="seg-contrib" style="width:'+(contribAbs/denom*100).toFixed(1)+'%"></div>'+
+    (gainAbs ? '<div class="seg-gain" style="width:'+(gainAbs/denom*100).toFixed(1)+'%"></div>' : '')+
+    (lossAbs ? '<div class="seg-loss" style="width:'+(lossAbs/denom*100).toFixed(1)+'%"></div>' : '');
+  $('perfLegend').innerHTML =
+    '<span><span class="dot" style="background:var(--info)"></span>Your money in \u2014 '+money(contribAbs)+'</span>'+
+    (D.totalReturn>=0
+      ? '<span><span class="dot" style="background:var(--pos)"></span>Total return \u2014 '+money(D.totalReturn)+'</span>'
+      : '<span><span class="dot" style="background:var(--neg)"></span>Total return \u2014 '+money(D.totalReturn)+'</span>');
+  const cov = (V.ranges||[]).length;
+  $('perfNote').textContent = (D.depN+D.witN===0 && (V.closed.length||D.divIncome||D.intIncome))
+    ? 'No deposit/withdrawal rows found \u2014 "net money in" is unknown, but realized and unrealized figures above don\u2019t need them.'
+    : (cov ? (cov+' cash-operations period'+(cov===1?'':'s')+' merged') : '');
+  renderXirr();
+  renderYearlyReturns();
+}
+function xirr(flows){
+  if(!flows || flows.length < 2) return null;
+  const sorted = [...flows].sort((a,b)=>a.date-b.date);
+  const t0 = sorted[0].date;
+  const yrs = d => (d - t0) / (365.25*86400000);
+  const npv = r => sorted.reduce((s,f)=> s + f.amount / Math.pow(1+r, yrs(f.date)), 0);
+  let lo = -0.9999, hi = 10;
+  let flo = npv(lo), fhi = npv(hi);
+  if(!isFinite(flo) || !isFinite(fhi)) return null;
+  if(flo*fhi > 0){ hi = 100; fhi = npv(hi); if(flo*fhi > 0) return null; }
+  let mid = 0;
+  for(let i=0;i<200;i++){
+    mid = (lo+hi)/2;
+    const fm = npv(mid);
+    if(!isFinite(fm)) return null;
+    if(Math.abs(fm) < 1e-6) break;
+    if(flo*fm < 0){ hi = mid; fhi = fm; } else { lo = mid; flo = fm; }
+  }
+  return mid;
+}
+function simulateBenchmark(flows, rate, endDate){
+  const sorted = [...flows].filter(f=>f.amount!==0).sort((a,b)=>a.date-b.date);
+  if(!sorted.length) return 0;
+  let balance = 0, last = sorted[0].date;
+  sorted.forEach(f=>{
+    const yrs = (f.date - last) / (365.25*86400000);
+    balance *= Math.pow(1+rate, yrs);
+    balance += -f.amount; /* flip sign: deposit(negative) -> +balance, withdrawal(positive) -> -balance */
+    last = f.date;
+  });
+  const yrsToEnd = (endDate - last) / (365.25*86400000);
+  balance *= Math.pow(1+rate, Math.max(0,yrsToEnd));
+  return balance;
+}
+function computeXirrComparison(benchRatePct){
+  const V = view();
+  const flows = [];
+  V.cashOps.forEach(o=>{
+    const t = o.type.toLowerCase();
+    if(t.indexOf('deposit')>=0) flows.push({date:o.time, amount:-o.amount});
+    else if(t.indexOf('withdraw')>=0) flows.push({date:o.time, amount:Math.abs(o.amount)});
+  });
+  if(!flows.length) return {hasData:false};
+  const t = totals();
+  const now = new Date();
+  const rate = xirr([...flows, {date:now, amount:t.total}]);
+  const benchRate = (Number(benchRatePct)||0)/100;
+  const benchEnding = simulateBenchmark(flows, benchRate, now);
+  const first = [...flows].sort((a,b)=>a.date-b.date)[0].date;
+  const years = (now - first) / (365.25*86400000);
+  return {hasData:true, rate, benchEnding, actualEnding:t.total, delta:t.total-benchEnding, years, n:flows.length};
+}
+function depositHistoryWarning(){
+  const V = view();
+  const depFlows = V.cashOps.filter(o=>o.type.toLowerCase().indexOf('deposit')>=0 && o.time);
+  if(!depFlows.length) return null;
+  const firstDeposit = depFlows.reduce((min,o)=> o.time<min?o.time:min, depFlows[0].time);
+  let earliestLot = null;
+  V.lots.forEach(l=>{ if(l.openTime && (!earliestLot || l.openTime<earliestLot)) earliestLot = l.openTime; });
+  V.closed.forEach(t=>{ if(t.openTime && (!earliestLot || t.openTime<earliestLot)) earliestLot = t.openTime; });
+  if(earliestLot && earliestLot < new Date(firstDeposit.getTime() - 30*86400000)){
+    return {firstDeposit, earliestLot};
+  }
+  return null;
+}
+function renderXirr(){
+  const R = computeXirrComparison($('benchRate').value);
+  const empty = $('xirrEmpty'), body = $('xirrBody');
+  if(!R.hasData){ empty.style.display='block'; body.style.display='none'; return; }
+  empty.style.display='none'; body.style.display='block';
+  const W = depositHistoryWarning();
+  $('xirrWarn').innerHTML = W ? (
+    '<div class="tip warn" style="margin-bottom:14px"><h5>\u26a0 Deposit history may be incomplete</h5>'+
+    '<p>You have a position opened on <b>'+iso(W.earliestLot)+'</b>, but your earliest recorded deposit is <b>'+iso(W.firstDeposit)+'</b> \u2014 more than a month later. Money had to get into the account somehow before that first sale, which usually means the Cash Operations export doesn\u2019t go back far enough.</p>'+
+    '<p>If deposits are missing, the annualized return below is <b>inflated</b>: it divides your gains by a "money in" figure that\u2019s too small. Re-export Cash Operations from XTB with the widest possible date range (ideally from account opening) and re-import to fix this.</p></div>'
+  ) : '';
+  $('xirrValue').textContent = R.rate!=null ? pct(R.rate*100) : '\u2014';
+  const totalEquiv = R.rate!=null ? (Math.pow(1+R.rate, R.years)-1)*100 : null;
+  $('xirrSub').textContent = R.rate!=null
+    ? ('per year, over ~'+R.years.toFixed(1)+' yrs \u2014 compounds to '+pct(totalEquiv)+' total across that whole time')
+    : 'could not solve \u2014 try more history';
+  const xc = $('xirrCard'); xc.classList.remove('pos','neg'); if(R.rate!=null) xc.classList.add(R.rate>=0?'pos':'neg');
+  $('benchValue').textContent = money(R.benchEnding);
+  $('deltaValue').textContent = money(R.delta);
+  $('deltaSub').textContent = (R.delta>=0?'ahead of':'behind') + ' the benchmark today';
+  const dc = $('deltaCard'); dc.classList.remove('pos','neg'); dc.classList.add(R.delta>=0?'pos':'neg');
+}
+function computeYearlyReturns(){
+  const V = view();
+  const years = new Set();
+  V.cashOps.forEach(o=>{ if(o.time) years.add(o.time.getFullYear()); });
+  V.closed.forEach(t=>{ if(t.closeTime) years.add(t.closeTime.getFullYear()); });
+  if(!years.size) return {hasData:false};
+  const sorted = [...years].sort((a,b)=>a-b);
+  let cumNet = 0;
+  const rows = sorted.map(y=>{
+    let deposited=0, withdrawn=0, divIncome=0, intIncome=0;
+    V.cashOps.forEach(o=>{
+      if(!o.time || o.time.getFullYear()!==y) return;
+      const t = o.type.toLowerCase();
+      if(t.indexOf('deposit')>=0) deposited += o.amount;
+      else if(t.indexOf('withdraw')>=0) withdrawn += Math.abs(o.amount);
+      else if(t === 'dividend') divIncome += o.amount;
+      else if(t.indexOf('interest')>=0) intIncome += o.amount;
+    });
+    const realizedTrading = V.closed
+      .filter(t=>t.closeTime && t.closeTime.getFullYear()===y)
+      .reduce((s,t)=>s+(t.gross!=null && isFinite(t.gross) ? t.gross : (t.sale-t.purchase)),0);
+    const realizedProfit = realizedTrading + divIncome + intIncome;
+    const netThisYear = deposited - withdrawn;
+    const capitalBase = cumNet + netThisYear/2;
+    const returnPct = capitalBase>0 ? (realizedProfit/capitalBase*100) : null;
+    cumNet += netThisYear;
+    return {year:y, netThisYear, realizedProfit, returnPct};
+  });
+  return {hasData:true, rows, totalNetDeposited:cumNet};
+}
+function renderYearlyReturns(){
+  const Y = computeYearlyReturns();
+  $('yearlyEmpty').style.display = Y.hasData ? 'none' : 'block';
+  $('yearlyBody').style.display = Y.hasData ? 'block' : 'none';
+  if(!Y.hasData) return;
+  const D = computeDeposits();
+  const R = computeXirrComparison($('benchRate').value);
+  $('yearlyTb').innerHTML = Y.rows.map(r=>
+    '<tr><td><b>'+r.year+'</b></td>'+
+    '<td>'+money(r.netThisYear)+'</td>'+
+    '<td class="'+(r.realizedProfit>=0?'pos':'neg')+'">'+money(r.realizedProfit)+'</td>'+
+    '<td class="'+(r.returnPct==null?'dim':(r.returnPct>=0?'pos':'neg'))+'">'+(r.returnPct==null?'\u2014':pct(r.returnPct))+'</td></tr>'
+  ).join('');
+  $('yearlyTf').innerHTML =
+    '<tr><td><b>All years</b><div class="company">since inception</div></td>'+
+    '<td>'+money(Y.totalNetDeposited)+'</td>'+
+    '<td class="'+(D.totalReturn>=0?'pos':'neg')+'">'+money(D.totalReturn)+'<div class="company">realized + unrealized</div></td>'+
+    '<td class="'+(R.rate==null?'dim':(R.rate>=0?'pos':'neg'))+'">'+(R.rate!=null?pct(R.rate*100):'\u2014')+'<div class="company">per year, annualized (XIRR)</div></td></tr>';
+}
+function ltShareOf(ticker){
+  const V = view();
+  const ls = V.lots.filter(l=>l.ticker===ticker && l.openTime);
+  if(!ls.length) return null;
+  const now = new Date();
+  const tot = ls.reduce((s,l)=>s+l.value,0);
+  if(!tot) return null;
+  const lt = ls.filter(l=>daysBetween(l.openTime, now)>=365).reduce((s,l)=>s+l.value,0);
+  return lt/tot*100;
+}
+function renderCards(){
+  const t = totals(), V = view();
+  $('totalValue').textContent = money(t.total);
+  $('invested').textContent = money(t.costBasis);
+  $('posCount').textContent = V.positions.length + ' open position' + (V.positions.length===1?'':'s');
+  $('upl').textContent = money(t.pl);
+  $('uplPct').textContent = pct(t.plPct) + ' overall';
+  const c = $('plCard'); c.classList.remove('pos','neg'); c.classList.add(t.pl>=0?'pos':'neg');
+}
+function renderTape(){
+  const V = view();
+  const tape = $('tape');
+  if(!V.positions.length){ tape.innerHTML = '<span class="tape-empty">Import your XTB report to light up the tape\u2026</span>'; return; }
+  const items = V.positions.map(p =>
+    '<span class="tape-item"><b>'+esc(cleanTicker(p.ticker))+'</b><span class="'+(p.netPct>=0?'pos':'neg')+'">'+pct(p.netPct)+'</span></span>'
+  ).join('');
+  tape.innerHTML = items + items;
+}
+function renderTable(){
+  const V = view();
+  const tb = $('tb'), empty = $('emptyState'), t = totals();
+  if(!V.positions.length){ tb.innerHTML=''; empty.style.display='block'; $('holdingsNote').textContent=''; return; }
+  empty.style.display='none';
+  const rows = V.positions.map(p => Object.assign({}, p, {
+    weight: t.total ? p.value/t.total*100 : 0,
+    ltShare: ltShareOf(p.ticker)
+  }));
+  rows.sort((a,b)=>{
+    const A=a[sortKey], B=b[sortKey];
+    if(typeof A === 'string' || typeof B === 'string') return sortDir * String(A).localeCompare(String(B));
+    return sortDir * ((A==null?-1:A) - (B==null?-1:B));
+  });
+  tb.innerHTML = rows.map(p=>{
+    let ltCell = '<span class="dim">\u2014</span>';
+    if(p.ltShare != null){
+      const cls = p.ltShare>=99.5?'lt':(p.ltShare<0.5?'st':'neutral');
+      ltCell = '<span class="badge '+cls+'">'+p.ltShare.toFixed(0)+'%</span>';
+    }
+    return '<tr>'+
+      '<td class="ticker-cell"><b>'+esc(cleanTicker(p.ticker))+'</b><div class="company">'+esc(p.company)+(V.isCombined?' \u00b7 '+accountCcy(p._srcAccount):'')+'</div></td>'+
+      '<td>'+nf(p.shares,4)+'</td>'+
+      '<td>'+money(p.avgCost)+'</td>'+
+      '<td>'+(p.nativePrice ? nf(p.nativePrice,2) : '\u2014')+'</td>'+
+      '<td>'+money(p.costBasis)+'</td>'+
+      '<td>'+money(p.value)+'</td>'+
+      '<td>'+p.weight.toFixed(1)+'%<div class="weight-bar" style="width:'+Math.max(4,p.weight)+'px"></div></td>'+
+      '<td class="'+(p.netProfit>=0?'pos':'neg')+'">'+money(p.netProfit)+'</td>'+
+      '<td class="'+(p.netPct>=0?'pos':'neg')+'">'+pct(p.netPct)+'</td>'+
+      '<td>'+ltCell+'</td></tr>';
+  }).join('');
+  document.querySelectorAll('th[data-key]').forEach(th=>{
+    th.classList.toggle('sorted', th.dataset.key===sortKey);
+    th.dataset.dir = sortDir===1?'\u2191':'\u2193';
+  });
+  $('holdingsNote').textContent = V.lots.length ? V.lots.length+' individual lots tracked' : 'no lot detail in this export';
+}
+/* Combine the same ticker across accounts into one row (e.g. ONDS held in
+   both a EUR and a USD account) so allocation/P&L views show one slice per
+   holding instead of one per account. Cleans exchange suffixes (.US/.UK/...)
+   so the same underlying stock listed differently still merges. Per-account
+   detail (needed for lot-level holding-period/tax tracking) stays intact in
+   the Holdings table, which is unaffected by this. */
+function mergedPositions(positions){
+  const map = new Map();
+  positions.forEach(p=>{
+    const key = cleanTicker(p.ticker) || p.ticker;
+    if(!map.has(key)){
+      map.set(key, {ticker:key, company:p.company, shares:0, value:0, costBasis:0, netProfit:0, accounts:new Set()});
+    }
+    const m = map.get(key);
+    m.shares += p.shares;
+    m.value += p.value;
+    m.costBasis += p.costBasis;
+    m.netProfit += p.netProfit;
+    if(p._srcAccount) m.accounts.add(p._srcAccount);
+  });
+  return [...map.values()].map(m=>{
+    m.avgCost = m.shares ? m.costBasis/m.shares : 0;
+    m.netPct = m.costBasis ? m.netProfit/m.costBasis*100 : 0;
+    m.multiAccount = m.accounts.size > 1;
+    return m;
+  });
+}
+function renderAllocation(){
+  const V = view();
+  const allocTb = $('allocTb'), allocEmpty = $('allocEmpty');
+  if(pieChart) pieChart.destroy();
+  if(!V.positions.length){ allocTb.innerHTML=''; allocEmpty.style.display='block'; return; }
+  allocEmpty.style.display='none';
+  const t = totals(), denom = t.total || t.posValue || 1;
+  const sorted = mergedPositions(V.positions).sort((a,b)=>b.value-a.value);
+  const colors = sorted.map((_,i)=>PALETTE[i%PALETTE.length]);
+  const labels = sorted.map(p=>cleanTicker(p.ticker));
+  const data = sorted.map(p=>p.value/denom*100);
+  const cols = [...colors];
+  if(t.cash>0){ labels.push('Cash'); data.push(t.cash/denom*100); cols.push('#5b6478'); }
+  pieChart = new Chart($('pie'), {
+    type:'pie',
+    data:{labels, datasets:[{data, backgroundColor:cols, borderColor:'#111828', borderWidth:2}]},
+    plugins:[ChartDataLabels],
+    options:{plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:c=>c.label+': '+c.raw.toFixed(1)+'%'}},
+      datalabels:{color:'#fff',font:{family:'JetBrains Mono',weight:'700',size:12},
+        formatter:v=>v>=2?v.toFixed(1)+'%':'', textStrokeColor:'rgba(0,0,0,0.5)', textStrokeWidth:3}}}
+  });
+  let html = sorted.map((p,i)=>
+    '<tr><td><span class="asset-name"><span class="dot" style="background:'+colors[i]+'"></span>'+esc(cleanTicker(p.ticker))+'</span></td>'+
+    '<td>'+(p.value/denom*100).toFixed(1)+'%</td><td>'+nf(p.shares,4)+'</td><td>'+money(p.avgCost)+'</td></tr>').join('');
+  if(t.cash>0){
+    html += '<tr><td><span class="asset-name cash-label"><span class="dot" style="background:#5b6478"></span>Cash</span></td>'+
+      '<td>'+(t.cash/denom*100).toFixed(1)+'%</td><td>\u2014</td><td>\u2014</td></tr>';
+  }
+  allocTb.innerHTML = html;
+}
+function renderPlChart(){
+  const V = view();
+  if(plChartInstance) plChartInstance.destroy();
+  if(!V.positions.length) return;
+  const key = plMetric==='pct'?'netPct':'netProfit';
+  const byPl = mergedPositions(V.positions).sort((a,b)=>a[key]-b[key]);
+  const fmt = v => plMetric==='pct' ? pct(v) : money(v);
+  plChartInstance = new Chart($('plChart'), {
+    type:'bar',
+    data:{labels:byPl.map(p=>cleanTicker(p.ticker)),
+      datasets:[{data:byPl.map(p=>p[key]), backgroundColor:byPl.map(p=>p[key]>=0?'#34d399':'#f87171'), borderRadius:3, barThickness:14}]},
+    plugins:[ChartDataLabels],
+    options:{indexAxis:'y',
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>fmt(c.raw)}},
+        datalabels:{anchor:'end',align:'end',
+          color:c=>c.dataset.data[c.dataIndex]>=0?'#34d399':'#f87171',
+          font:{family:'JetBrains Mono',size:11,weight:'600'}, formatter:v=>fmt(v)}},
+      scales:{x:{ticks:{color:'#8b96ac',font:{family:'JetBrains Mono',size:10.5}},grid:{color:'#232e42'}},
+              y:{ticks:{color:'#8b96ac',font:{family:'JetBrains Mono',size:10.5}},grid:{display:false}}},
+      layout:{padding:{right:46}}}
+  });
+}
+function renderLongTerm(){
+  const V = view();
+  const panel = $('ltPanel');
+  const withDates = V.lots.filter(l=>l.openTime);
+  if(!withDates.length){ panel.style.display='none'; return; }
+  panel.style.display='block';
+  const now = new Date(), c = cur(), fx = rateAt(c, now) || 1;
+  const R = rulesFor(now.getFullYear());
+  const soon = withDates
+    .map(l=>{
+      const d = daysBetween(l.openTime, now);
+      const cross = new Date(l.openTime.getTime() + 365*86400000);
+      return Object.assign({}, l, {days:d, cross, gainRON:l.netProfit*fx});
+    })
+    .filter(l=>l.days<365 && l.gainRON>0)
+    .sort((a,b)=>(b.gainRON*(R.stCap-R.ltCap))-(a.gainRON*(R.stCap-R.ltCap)))
+    .slice(0,12);
+
+  const ltVal = withDates.filter(l=>daysBetween(l.openTime,now)>=365).reduce((s,l)=>s+l.value,0);
+  const totVal = withDates.reduce((s,l)=>s+l.value,0);
+  const pending = withDates.filter(l=>daysBetween(l.openTime,now)<365 && l.netProfit>0)
+                           .reduce((s,l)=>s+l.netProfit*fx*(R.stCap-R.ltCap),0);
+  $('ltSummary').innerHTML =
+    '<div class="seg">'+
+    '<span class="badge lt">'+(totVal?(ltVal/totVal*100).toFixed(0):0)+'% of your book is already long-term</span>'+
+    '<span class="badge st">'+ron(pending)+' of tax at stake in lots not yet at 365 days</span>'+
+    '</div>';
+
+  $('ltTb').innerHTML = soon.length ? soon.map(l=>{
+    const now2 = R.stCap*l.gainRON, later = R.ltCap*l.gainRON;
+    return '<tr><td class="ticker-cell"><b>'+esc(cleanTicker(l.ticker))+'</b><div class="company">'+nf(l.volume,2)+' sh &middot; '+money(l.value)+'</div></td>'+
+      '<td>'+iso(l.openTime)+'</td><td>'+Math.floor(l.days)+'</td>'+
+      '<td>'+iso(l.cross)+' <span class="dim">('+Math.ceil(365-l.days)+'d)</span></td>'+
+      '<td class="pos">'+money(l.netProfit)+'</td>'+
+      '<td>'+ron(now2)+'</td><td>'+ron(later)+'</td>'+
+      '<td class="pos">'+ron(now2-later)+'</td></tr>';
+  }).join('') : '<tr><td colspan="8" class="dim" style="text-align:center">Every lot sitting on a gain is already past 365 days. Nothing to wait for.</td></tr>';
+}
+</script>
+<script>
+/* ==================================================================
+   TAX ENGINE
+   ================================================================== */
+function yearsAvailable(){
+  const TD = taxData();
+  const set = new Set();
+  TD.closed.forEach(t=>{ if(t.closeTime) set.add(t.closeTime.getFullYear()); });
+  TD.cashOps.forEach(o=>{ if(o.time) set.add(o.time.getFullYear()); });
+  const now = new Date().getFullYear();
+  set.add(now); set.add(now-1);
+  return [...set].sort((a,b)=>b-a);
+}
+
+function roTaxWithheld(year){
+  const TD = taxData();
+  let sum = 0, n = 0;
+  TD.cashOps.forEach(o=>{
+    if(o.time.getFullYear() !== year) return;
+    if(!/^ro tax/i.test(o.type)) return;
+    const m = /\(([\d.,]+)\s*RON\)/i.exec(o.comment||'');
+    if(m){ sum += parseFloat(m[1].replace(/,/g,'')); n++; }
+    else { sum += Math.abs(o.amount) * (rateAt(o._ccy, o.time)||1); n++; }
+  });
+  return {sum, n};
+}
+
+function computeTax(){
+  const TD = taxData();
+  const year = S.tax.year, R = rulesFor(year), mw = minWage();
+  const C = {year, R, mw, warnings:[]};
+
+  /* ---- capital gains ---- */
+  const trades = TD.closed.filter(t=>t.closeTime && t.closeTime.getFullYear()===year);
+  const map = {};
+  let gLT=0, gST=0, loss=0, tax=0, noDate=0;
+  trades.forEach(t=>{
+    const fo = rateAt(t._ccy, t.openTime || t.closeTime) || 1;
+    const fc = rateAt(t._ccy, t.closeTime) || 1;
+    const gain = t.sale*fc - t.purchase*fo;
+    const known = !!t.openTime;
+    const days = known ? daysBetween(t.openTime, t.closeTime) : 0;
+    const lt = known && days >= 365;
+    if(!known) noDate++;
+    const k = t.ticker;
+    map[k] = map[k] || {ticker:k, company:t.company, n:0, lt:0, st:0, loss:0, tax:0};
+    map[k].n++;
+    if(gain > 0){
+      if(lt){ gLT += gain; map[k].lt += gain; map[k].tax += gain*R.ltCap; tax += gain*R.ltCap; }
+      else  { gST += gain; map[k].st += gain; map[k].tax += gain*R.stCap; tax += gain*R.stCap; }
+    } else { loss += -gain; map[k].loss += -gain; }
+  });
+  const transferred = trades.filter(t=>/transfer/i.test(t.note||'')).length;
+  const actual = roTaxWithheld(year);
+  C.cg = {
+    rows:Object.values(map).sort((a,b)=>(b.lt+b.st)-(a.lt+a.st)),
+    gainLT:gLT, gainST:gST, gross:gLT+gST, loss, net:gLT+gST-loss, tax, count:trades.length,
+    noDate, transferred, actual, source:'estimate'
+  };
+  if(S.tax.useFisa){
+    const f = S.tax.fisa;
+    const lt = Number(f.gainLT)||0, st = Number(f.gainST)||0;
+    const ft = (f.tax==='' || f.tax==null) ? (lt*R.ltCap + st*R.stCap) : Number(f.tax)||0;
+    C.cg = {rows:C.cg.rows, gainLT:lt, gainST:st, gross:lt+st, loss:Number(f.loss)||0,
+            net:lt+st-(Number(f.loss)||0), tax:ft, count:trades.length, noDate:0, actual, source:'fisa'};
+  }
+
+  /* ---- dividends & interest from the broker ---- */
+  let dGross=0, dTax=0, iGross=0;
+  TD.cashOps.forEach(o=>{
+    if(o.time.getFullYear() !== year) return;
+    const t = o.type.toLowerCase();
+    const fx = annualRate(o._ccy, year) || rateAt(o._ccy, o.time) || 1;
+    if(t === 'dividend') dGross += o.amount*fx;
+    else if(t.indexOf('withholding') >= 0) dTax += Math.abs(o.amount)*fx;
+    else if(t.indexOf('interest') >= 0) iGross += o.amount*fx;
+  });
+  const mDG = S.tax.mDivGross, mDT = S.tax.mDivTax, mIG = S.tax.mIntGross;
+  const manualDiv = (mDG !== '' && mDG != null);
+  if(manualDiv) dGross = Number(mDG)||0;
+  if(mDT !== '' && mDT != null) dTax = Number(mDT)||0;
+  if(mIG !== '' && mIG != null) iGross = Number(mIG)||0;
+
+  const capPct = (Number(S.tax.treatyCap)||0)/100;
+  const dDue = dGross * R.div;
+  const dCredit = Math.min(dTax, dGross*capPct, dDue);
+  const dPayable = Math.max(0,dDue-dCredit);
+  C.div = {gross:dGross, foreign:dTax, due:dDue, credit:dCredit, payable:dPayable,
+           cass:Math.max(0, dGross-dTax-dPayable), effWHT: dGross>0 ? dTax/dGross*100 : 0, manual:manualDiv,
+           lostCredit: Math.max(0, dTax - dGross*capPct)};
+  const iDue = iGross * R.interest;
+  C.int = {gross:iGross, due:iDue, withheld: S.tax.intWithheld ? iDue : 0,
+           payable: S.tax.intWithheld ? 0 : iDue, cass: Math.max(0, iGross-iDue)};
+
+  /* ---- other income ---- */
+  C.other = (S.tax.other||[]).map(r=>{
+    const cat = CATS[r.cat] || CATS.otherSrc;
+    const gross = Number(r.gross)||0;
+    const withheld = Number(r.withheld)||0;
+    const dRate = (cat.deduct === 'rentDeduct') ? R.rentDeduct : (Number(cat.deduct)||0);
+    const base = gross * (1-dRate);
+    const rate = cat.rate==='zero' ? 0 : (R[cat.rate]||0);
+    const due = base * rate;
+    let cass = 0;
+    if(cat.cass === 'base') cass = base;
+    else if(cat.cass === 'afterTax') cass = Math.max(0, gross - due);
+    else if(cat.cass === 'afterForeign') cass = Math.max(0, gross - withheld);
+    return {id:r.id, label:r.label, cat:r.cat, catLabel:cat.label, gross, withheld, base, rate, due,
+            payable:Math.max(0, due-withheld), cass};
+  });
+
+  /* ---- CASS ---- */
+  const otherCass = C.other.reduce((s,r)=>s+r.cass,0);
+  const cassBase = C.cg.gross + C.div.cass + C.int.cass + otherCass;
+  const th = [6*mw, 12*mw, 24*mw];
+  let tier = 0, base = 0;
+  if(cassBase >= th[2]){ tier = 3; base = th[2]; }
+  else if(cassBase >= th[1]){ tier = 2; base = th[1]; }
+  else if(cassBase >= th[0]){ tier = 1; base = th[0]; }
+  C.cass = {income:cassBase, tier, base, due: base*R.cass, thresholds:th,
+            nextThreshold: tier<3 ? th[tier] : null,
+            headroom: tier<3 ? th[tier]-cassBase : null,
+            overshoot: tier>0 ? cassBase-th[tier-1] : null,
+            };
+
+  /* ---- totals ---- */
+  const withheld = C.cg.tax + C.int.withheld + C.other.reduce((s,r)=>s+Math.min(r.withheld,r.due),0);
+  const payable = C.div.payable + C.int.payable + C.other.reduce((s,r)=>s+r.payable,0);
+  C.tot = {
+    withheld, payable, cass:C.cass.due, foreign:C.div.foreign,
+    total: withheld + payable + C.cass.due,
+    remaining: payable + C.cass.due,
+    income: C.cg.gross + C.div.gross + C.int.gross + C.other.reduce((s,r)=>s+r.gross,0)
+  };
+  C.tot.effective = C.tot.income ? C.tot.total/C.tot.income*100 : 0;
+  C.hasData = !!(C.cg.count || C.div.gross || C.int.gross || C.other.length || C.cg.gross);
+  return C;
+}
+
+/* coverage of the tax year by the imported reports */
+function coverage(year){
+  const rs = (taxData().ranges||[]).filter(r=>r.from && r.to);
+  if(!rs.length) return null;
+  const start = new Date(year,0,1), end = new Date(Math.min(new Date(year,11,31).getTime(), Date.now()));
+  const inYear = rs.filter(r=>r.to>=start && r.from<=end);
+  if(!inYear.length) return {covered:0, start, end};
+  const from = new Date(Math.max(start.getTime(), Math.min(...inYear.map(r=>r.from.getTime()))));
+  const to = new Date(Math.min(end.getTime(), Math.max(...inYear.map(r=>r.to.getTime()))));
+  const span = Math.max(1, daysBetween(start, end));
+  return {covered: Math.max(0, Math.min(1, daysBetween(from,to)/span)), from, to, start, end};
+}
+
+/* ==================================================================
+   TAX RENDERING
+   ================================================================== */
+function renderTax(){
+  const C = computeTax();
+
+  const scopeWarn = $('taxScopeWarn');
+  if(S.activeView !== 'all' && accountKeys().length > 1){
+    scopeWarn.style.display = 'block';
+    scopeWarn.innerHTML = '<h5>\u26a0 Showing '+esc(accountLabel(S.activeView))+' only</h5>'+
+      '<p>Your CASS threshold and D212 filing cover <b>all</b> your investment income, not one account. Switch to <b>All accounts</b> above for the numbers that actually matter at filing time \u2014 this single-account view is for checking one account\u2019s own contribution.</p>';
+  } else {
+    scopeWarn.style.display = 'none';
+  }
+
+  $('taxPill').textContent = C.year;
+  $('taxEmpty').style.display = C.hasData ? 'none' : 'block';
+
+  /* cards */
+  $('tCassBase').textContent = ron(C.cass.income);
+  $('tCassBaseSub').textContent = C.cass.tier ? ('tier '+C.cass.tier+' of 3 reached') : 'below the first threshold';
+  $('tIncomeTax').textContent = ron(C.tot.withheld + C.tot.payable);
+  $('tIncomeTaxSub').textContent = ron(C.tot.withheld)+' withheld \u00b7 '+ron(C.tot.payable)+' to pay';
+  $('tCass').textContent = ron(C.cass.due);
+  $('tCassSub').textContent = C.cass.tier ? ('10% of '+ron(C.cass.base)) : 'nothing due';
+  $('tRemaining').textContent = ron(C.tot.remaining);
+  $('tRemainingSub').textContent = C.tot.remaining>0 ? (ron(C.tot.payable)+' income tax + '+ron(C.cass.due)+' CASS') : 'nothing left to pay';
+  $('tTotal').textContent = ron(C.tot.total);
+  $('tTotalSub').textContent = C.tot.effective.toFixed(1)+'% of '+ron(C.tot.income)+' income';
+
+  /* capital gains */
+  $('fisaWrap').style.display = S.tax.useFisa ? 'block' : 'none';
+  $('cgWrap').style.display = S.tax.useFisa ? 'none' : 'block';
+  const rows = C.cg.rows;
+  $('cgTb').innerHTML = rows.length ? rows.map(r=>{
+    const net = r.lt+r.st-r.loss;
+    const gross = r.lt+r.st;
+    const effRate = gross>0 ? r.tax/gross*100 : null;
+    let rateCell;
+    if(effRate==null) rateCell = '<span class="dim">\u2014</span>';
+    else if(r.lt>0 && r.st>0) rateCell = '<span class="dim">'+effRate.toFixed(1)+'% blended</span>';
+    else if(r.lt>0) rateCell = '<span class="badge lt">'+effRate.toFixed(1)+'%</span>';
+    else rateCell = '<span class="badge st">'+effRate.toFixed(1)+'%</span>';
+    return '<tr><td class="ticker-cell"><b>'+esc(cleanTicker(r.ticker))+'</b><div class="company">'+esc(r.company)+'</div></td>'+
+      '<td>'+r.n+'</td>'+
+      '<td class="'+(r.lt?'pos':'dim')+'">'+ron(r.lt)+'</td>'+
+      '<td class="'+(r.st?'pos':'dim')+'">'+ron(r.st)+'</td>'+
+      '<td class="'+(r.loss?'neg':'dim')+'">'+ron(r.loss)+'</td>'+
+      '<td class="'+(net>=0?'':'neg')+'">'+ron(net)+'</td>'+
+      '<td>'+ron(gross)+'</td>'+
+      '<td class="neg">'+ron(r.tax)+'</td>'+
+      '<td>'+rateCell+'</td></tr>';
+  }).join('') : '<tr><td colspan="9" class="dim" style="text-align:center">No sales imported for '+C.year+'.</td></tr>';
+  const effTotal = C.cg.gross>0 ? C.cg.tax/C.cg.gross*100 : null;
+  $('cgTf').innerHTML = rows.length ?
+    '<tr><td>Total</td><td>'+C.cg.count+'</td><td class="pos">'+ron(C.cg.gainLT)+'</td><td class="pos">'+ron(C.cg.gainST)+'</td>'+
+    '<td class="neg">'+ron(C.cg.loss)+'</td><td class="'+(C.cg.net>=0?'':'neg')+'">'+ron(C.cg.net)+'</td>'+
+    '<td>'+ron(C.cg.gross)+'</td><td class="neg">'+ron(C.cg.tax)+'</td>'+
+    '<td>'+(effTotal!=null?effTotal.toFixed(1)+'% blended':'\u2014')+'</td></tr>' : '';
+
+  const noteBits = [];
+  noteBits.push('Rates for '+C.year+': <b>'+(C.R.ltCap*100).toFixed(0)+'%</b> on lots held 365 days or more, <b>'+(C.R.stCap*100).toFixed(0)+'%</b> below that. Tax applies to each winning sale; the '+ron(C.cg.loss)+' of losses does not reduce it.');
+  if(C.cg.transferred) noteBits.push('<b>'+C.cg.transferred+'</b> of these lots were transferred in from another broker \u2014 the export shows the <i>transfer</i> date as the open date, so their real holding period is longer and part of the tax was probably charged at the lower rate. That is the usual reason this estimate comes out above what was actually withheld.');
+  if(C.cg.noDate) noteBits.push('<b>'+C.cg.noDate+'</b> trades had no open date in the export and were treated as short-term.');
+  const cov = coverage(C.year);
+  if(cov && cov.covered < 0.95) noteBits.push('\u26a0 Your imported reports only cover about <b>'+Math.round(cov.covered*100)+'%</b> of '+C.year+' ('+iso(cov.from)+' \u2192 '+iso(cov.to)+'). Export the full year for a complete picture.');
+  $('cgNote').innerHTML = noteBits.join(' ');
+
+  const rec = $('cgRecon');
+  if(C.cg.actual.n && !S.tax.useFisa){
+    const diff = C.cg.tax - C.cg.actual.sum;
+    const pctDiff = C.cg.actual.sum ? Math.abs(diff)/C.cg.actual.sum*100 : 0;
+    const ok = pctDiff < 8;
+    rec.innerHTML = '<div class="tip '+(ok?'good':'warn')+'" style="margin-top:14px"><h5>'+(ok?'\u2713':'\u26a0')+' Reconciliation with what XTB actually withheld</h5>'+
+      '<p>Your cash operations contain <b>'+C.cg.actual.n+'</b> "RO tax" lines totalling <b>'+ron(C.cg.actual.sum)+'</b>. My estimate above is <b>'+ron(C.cg.tax)+'</b>, a difference of <b>'+ron(Math.abs(diff))+'</b> ('+pctDiff.toFixed(1)+'%).</p>'+
+      '<p>'+(ok? 'Close enough \u2014 the gap is just exchange-rate rounding. The withheld figure is the real one.'
+                : 'That gap is larger than rounding. Most likely the import does not cover the whole year, or the exchange-rate mode is off. Switch to daily rates, or type the figures from your <i>Fi\u0219\u0103 de portofoliu</i>.')+'</p></div>';
+  } else rec.innerHTML = '';
+
+  /* dividends & interest */
+  const dv = C.div, it = C.int;
+  $('divSource').textContent = dv.manual ? 'manual override in use' : (dv.gross||it.gross ? 'read from Cash Operations' : 'nothing imported');
+  const divRows = [];
+  divRows.push('<tr><td>Dividends (foreign shares)</td><td>'+ron(dv.gross,2)+'</td>'+
+    '<td>'+ron(dv.foreign,2)+(dv.gross?' <span class="dim">('+dv.effWHT.toFixed(0)+'%)</span>':'')+'</td>'+
+    '<td>'+(C.R.div*100).toFixed(0)+'%</td><td>'+ron(dv.due,2)+'</td><td class="pos">'+ron(dv.credit,2)+'</td>'+
+    '<td class="'+(dv.payable?'neg':'dim')+'">'+ron(dv.payable,2)+'</td><td>'+ron(dv.cass,2)+'</td></tr>');
+  divRows.push('<tr><td>Interest on free cash</td><td>'+ron(it.gross,2)+'</td><td class="dim">'+ron(0,2)+'</td>'+
+    '<td>'+(C.R.interest*100).toFixed(0)+'%</td><td>'+ron(it.due,2)+'</td><td class="dim">\u2014</td>'+
+    '<td class="'+(it.payable?'neg':'dim')+'">'+ron(it.payable,2)+'</td><td>'+ron(it.cass,2)+'</td></tr>');
+  $('divTb').innerHTML = divRows.join('');
+  $('divTf').innerHTML = '<tr><td>Total</td><td>'+ron(dv.gross+it.gross,2)+'</td><td>'+ron(dv.foreign,2)+'</td>'+
+    '<td>\u2014</td><td>'+ron(dv.due+it.due,2)+'</td><td>'+ron(dv.credit,2)+'</td>'+
+    '<td>'+ron(dv.payable+it.payable,2)+'</td><td>'+ron(dv.cass+it.cass,2)+'</td></tr>';
+
+  /* other income computed cells */
+  C.other.forEach(r=>{
+    const el = q=>document.querySelector('[data-rowid="'+r.id+'"] .'+q);
+    if(el('c-base')) el('c-base').textContent = ron(r.base,2);
+    if(el('c-tax'))  el('c-tax').textContent  = ron(r.due,2) + (r.payable && r.withheld ? ' ('+ron(r.payable,2)+' left)' : '');
+    if(el('c-cass')) el('c-cass').textContent = ron(r.cass,2);
+  });
+  if(C.other.length){
+    const sum = (f) => C.other.reduce((s,r)=>s+r[f],0);
+    $('otherTf').innerHTML = '<tr><td>Total</td><td></td><td>'+ron(sum('gross'),2)+'</td><td>'+ron(sum('withheld'),2)+'</td>'+
+      '<td>'+ron(sum('base'),2)+'</td><td>'+ron(sum('due'),2)+'</td><td>'+ron(sum('cass'),2)+'</td><td></td></tr>';
+  } else { $('otherTf').innerHTML = ''; }
+
+  renderLadder(C);
+  renderSummary(C);
+  renderD212(C);
+  renderMix(C);
+  renderTips(C);
+  renderFooter();
+}
+
+function renderLadder(C){
+  const mw = C.mw, th = C.cass.thresholds, names = ['6 minimum wages','12 minimum wages','24 minimum wages'];
+  let html = '<div class="rung'+(C.cass.tier===0?' on':'')+'">'+
+    '<div class="rung-name">Below the first step<small>under '+ron(th[0])+'</small></div>'+
+    '<div class="rung-bar"><i style="width:'+Math.min(100, C.cass.income/th[0]*100).toFixed(1)+'%"></i></div>'+
+    '<div class="rung-val '+(C.cass.tier===0?'':'dim')+'">0 lei</div></div>';
+  th.forEach((t,i)=>{
+    const on = C.cass.tier === i+1;
+    const done = C.cass.income >= t;
+    const upper = i<2 ? th[i+1] : null;
+    const fill = C.cass.income <= t ? 0 : (upper ? Math.min(100,(C.cass.income-t)/(upper-t)*100) : 100);
+    html += '<div class="rung'+(on?' on':'')+'">'+
+      '<div class="rung-name">'+names[i]+'<small>from '+ron(t)+(upper?' to '+ron(upper):' and above')+'</small></div>'+
+      '<div class="rung-bar'+(done&&!on?' done':'')+'"><i style="width:'+fill.toFixed(1)+'%"></i></div>'+
+      '<div class="rung-val '+(on?'':'dim')+'">'+ron(t*C.R.cass)+'</div></div>';
+  });
+  $('ladder').innerHTML = html;
+
+  let m = 'Your countable income: <b style="color:var(--text)">'+ron(C.cass.income)+'</b> &nbsp;\u00b7&nbsp; minimum wage used: '+ron(mw)+' &nbsp;\u00b7&nbsp; CASS due: <b style="color:var(--accent)">'+ron(C.cass.due)+'</b>';
+  if(C.cass.headroom != null) m += '<br>Room left before the next step: <b style="color:var(--pos)">'+ron(C.cass.headroom)+'</b>';
+  $('cassMarker').innerHTML = m;
+}
+
+function renderSummary(C){
+  const L = [];
+  L.push(['Gross gains on winning sales', ron(C.cg.gross)]);
+  if(C.cg.loss) L.push(['Losses (no tax relief)', ron(C.cg.loss)]);
+  L.push(['Dividends + interest, gross', ron(C.div.gross + C.int.gross)]);
+  if(C.other.length) L.push(['Other declared income, gross', ron(C.other.reduce((s,r)=>s+r.gross,0))]);
+  L.push(['Income tax withheld at source (already paid)', ron(C.tot.withheld)]);
+  L.push(['Income tax still to pay', ron(C.tot.payable)]);
+  L.push(['CASS still to pay', ron(C.cass.due)]);
+  if(C.div.foreign) L.push(['Tax already paid abroad', ron(C.div.foreign)]);
+  let html = L.map(r=>'<div class="kv"><span>'+r[0]+'</span><span>'+r[1]+'</span></div>').join('');
+  html += '<div class="kv total"><span>Total still to pay</span><span>'+ron(C.tot.remaining)+'</span></div>';
+  html += '<p class="note" style="margin-top:10px">That\u2019s the amount that actually leaves your pocket at filing time \u2014 mostly CASS once capital-gains tax is withheld at source. Including the '+ron(C.tot.withheld)+' already withheld, the full tax burden on '+ron(C.tot.income)+' of income is <b>'+ron(C.tot.total)+'</b> ('+C.tot.effective.toFixed(1)+'% effective).</p>';
+  $('sumBox').innerHTML = html;
+}
+
+function renderD212(C){
+  const y = C.year, L = [];
+  L.push('<p class="note"><b>Deadline: 25 May '+(y+1)+'</b>, filed online through the ANAF SPV for income realised in '+y+'.</p>');
+  const items = [];
+  if(C.cg.gross) items.push('<li><b>Capital gains at XTB Romania:</b> nothing to declare for income tax \u2014 the '+ron(C.cg.tax)+' was withheld at source and is final.</li>');
+  if(C.div.gross) items.push('<li><b>Section 2, subsection 1 \u2014 foreign dividends:</b> gross '+ron(C.div.gross)+', tax paid abroad '+ron(C.div.foreign)+', Romanian tax '+ron(C.div.due)+', credit claimed '+ron(C.div.credit)+', left to pay '+ron(C.div.payable)+'. One block per source country.</li>');
+  if(C.int.gross && !S.tax.intWithheld) items.push('<li><b>Interest:</b> gross '+ron(C.int.gross)+', tax '+ron(C.int.payable)+' \u2014 declare it if the payer did not withhold.</li>');
+  C.other.forEach(r=>{ if(r.gross) items.push('<li><b>'+esc(r.label||r.catLabel)+':</b> base '+ron(r.base)+', tax '+ron(r.due)+(r.withheld?' (\u2212'+ron(r.withheld)+' already withheld)':'')+'.</li>'); });
+  if(C.cass.tier) items.push('<li><b>Section 3, subsection 2 \u2014 CASS:</b> countable income '+ron(C.cass.income)+' lands on the '+[6,12,24][C.cass.tier-1]+'-wage step \u2192 base '+ron(C.cass.base)+', contribution '+ron(C.cass.due)+'.</li>');
+  else items.push('<li><b>CASS:</b> '+ron(C.cass.income)+' is under '+ron(C.cass.thresholds[0])+', so no CASS section to fill.</li>');
+  if(!C.cg.gross && !C.div.gross && !C.int.gross && !C.other.length && !C.cass.tier)
+    items.push('<li>Nothing to declare from what has been entered so far.</li>');
+  L.push('<ul style="margin-left:16px;font-size:13px;color:var(--text-dim);line-height:1.75">'+items.join('')+'</ul>');
+  $('d212Box').innerHTML = L.join('');
+}
+
+function renderMix(C){
+  if(mixChartInstance) mixChartInstance.destroy();
+  const parts = [
+    ['Gains \u22651y', C.cg.gainLT, '#34d399'],
+    ['Gains <1y', C.cg.gainST, '#e8a33d'],
+    ['Dividends', C.div.gross, '#60a5fa'],
+    ['Interest', C.int.gross, '#a78bfa']
+  ];
+  C.other.forEach((r,i)=>{ if(r.gross) parts.push([r.label||r.catLabel, r.gross, PALETTE[(i+4)%PALETTE.length]]); });
+  const use = parts.filter(p=>p[1] > 0);
+  if(!use.length){ $('mixLegend').innerHTML = '<p class="note">Nothing to chart yet.</p>'; return; }
+  mixChartInstance = new Chart($('mixChart'), {
+    type:'doughnut',
+    data:{labels:use.map(p=>p[0]), datasets:[{data:use.map(p=>p[1]), backgroundColor:use.map(p=>p[2]), borderColor:'#111828', borderWidth:2}]},
+    plugins:[ChartDataLabels],
+    options:{cutout:'58%', plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:x=>x.label+': '+ron(x.raw)}},
+      datalabels:{color:'#0a0e17',font:{family:'JetBrains Mono',weight:'700',size:11},
+        formatter:(v,ctx)=>{ const tot=ctx.dataset.data.reduce((a,b)=>a+b,0); const p=v/tot*100; return p>=8?p.toFixed(0)+'%':''; }}}}
+  });
+  const tot = use.reduce((s,p)=>s+p[1],0);
+  $('mixLegend').innerHTML = use.map(p=>
+    '<div class="kv" style="padding:6px 0"><span><span class="dot" style="background:'+p[2]+'"></span>'+esc(p[0])+'</span><span>'+ron(p[1])+' <span class="dim">'+(p[1]/tot*100).toFixed(0)+'%</span></span></div>').join('');
+}
+
+/* ==================================================================
+   OPTIMISATION TIPS
+   ================================================================== */
+function tip(cls, title, ...paras){ return '<div class="tip '+cls+'"><h5>'+title+'</h5>'+paras.map(p=>'<p>'+p+'</p>').join('')+'</div>'; }
+
+function renderTips(C){
+  const T = [], now = new Date(), isCurrentYear = C.year === now.getFullYear();
+  const th = C.cass.thresholds, R = C.R;
+
+  if(!C.hasData){
+    $('tips').innerHTML = tip('info','Nothing to work with yet',
+      'Import a closed-positions export for '+C.year+', or type the figures from your annual <i>Fi\u0219\u0103 de portofoliu</i> in section 1. The advice below gets specific once there are numbers.');
+    return;
+  }
+
+  /* --- the CASS cliff --- */
+  if(C.cass.tier === 0){
+    const room = C.cass.headroom;
+    if(room < th[0]*0.15){
+      T.push(tip('warn','You are close to the first CASS step',
+        'You are <b>'+ron(room)+'</b> short of '+ron(th[0])+'. Crossing that line by a single leu triggers <b>'+ron(th[0]*R.cass)+'</b> of CASS \u2014 not 10% of the excess, the whole step.',
+        isCurrentYear ? 'If you were planning one more sale this year, check what it would add to the gross gain first. Pushing it into January costs you nothing but patience.'
+                      : 'For '+C.year+' this is settled. Keep the number in mind for the current year.'));
+    } else {
+      T.push(tip('good','No CASS due, with room to spare',
+        'Countable income is <b>'+ron(C.cass.income)+'</b> against a threshold of '+ron(th[0])+'. You can still realise <b>'+ron(room)+'</b> of gross gains this year before CASS appears at all.',
+        'Inside that room your only cost is the '+(R.stCap*100).toFixed(0)+'% (or '+(R.ltCap*100).toFixed(0)+'% long-term) capital-gains tax. That is the cheapest tax you will ever pay on this money \u2014 it is often worth deliberately realising gains up to the line, then buying back if you still like the position.'));
+    }
+  } else {
+    const over = C.cass.overshoot, stepCost = th[C.cass.tier-1]*R.cass;
+    if(over < stepCost*1.2){
+      T.push(tip('warn','You crossed a CASS step by very little',
+        'You are only <b>'+ron(over)+'</b> above the '+[6,12,24][C.cass.tier-1]+'-wage threshold, and that overshoot cost you <b>'+ron(stepCost - (C.cass.tier>1 ? th[C.cass.tier-2]*R.cass : 0))+'</b> in extra CASS.',
+        'On that last slice of income the effective marginal rate is over <b>'+Math.round((stepCost - (C.cass.tier>1?th[C.cass.tier-2]*R.cass:0))/Math.max(over,1)*100)+'%</b>. '+(isCurrentYear? 'If any of it came from a sale you could still have deferred, that is the lesson for next December.' : 'Worth planning around next year: the threshold is a cliff, not a slope.')));
+    } else {
+      T.push(tip('info','You are on CASS step '+C.cass.tier,
+        'Countable income <b>'+ron(C.cass.income)+'</b> \u2192 base '+ron(C.cass.base)+' \u2192 contribution <b>'+ron(C.cass.due)+'</b>.'+
+        (C.cass.headroom != null ? ' The next step starts at '+ron(th[C.cass.tier])+', so you have <b>'+ron(C.cass.headroom)+'</b> of room before it costs you more.' : ' You are on the top step \u2014 additional passive income adds no further CASS at all, which makes extra gains unusually cheap from here.')));
+    }
+  }
+
+  /* --- losses do not help --- */
+  if(C.cg.loss > 0){
+    T.push(tip('warn','Your losses bought you nothing \u2014 by design',
+      'You realised <b>'+ron(C.cg.loss)+'</b> of losses and they reduced neither your tax bill nor your CASS base. Through a Romanian intermediary the tax is computed per winning sale, losses are not offset and they cannot be carried to another year.',
+      'So the classic year-end move \u2014 "sell a loser to cancel a winner" \u2014 does not work here. It works at a foreign broker, where you self-declare on the net result, but there the rate is 16% instead of '+(R.stCap*100).toFixed(0)+'%. The Romanian broker is still usually the better deal; just do not expect loss relief from it.',
+      'The practical version: if a position is a genuine mistake, sell it because it is a mistake. Do not sell it in December expecting a tax refund that will not come.'));
+  }
+
+  /* --- 365 day rule --- */
+  const V = view();
+  const withDates = V.lots.filter(l=>l.openTime);
+  if(withDates.length){
+    const fx = rateAt(V.currency, now) || 1;
+    const pending = withDates.filter(l=>daysBetween(l.openTime,now)<365 && l.netProfit>0);
+    const saving = pending.reduce((s,l)=>s+l.netProfit*fx*(R.stCap-R.ltCap),0);
+    const soonest = pending.slice().sort((a,b)=>a.openTime-b.openTime)[0];
+    if(saving > 50 && soonest){
+      T.push(tip('act','Waiting for the 365th day halves the rate',
+        'Across your open lots that are in profit but not yet a year old, holding to the 365-day mark would save roughly <b>'+ron(saving)+'</b> in tax at today\u2019s prices \u2014 the difference between '+(R.stCap*100).toFixed(0)+'% and '+(R.ltCap*100).toFixed(0)+'%.',
+        'The nearest one crosses on <b>'+iso(new Date(soonest.openTime.getTime()+365*86400000))+'</b>. The full list is in the <i>Holding-period watchlist</i> on the Portfolio tab.',
+        'Sanity check: a 3-point tax difference is small next to what a stock can do in a month. Wait for the date when you were happy to hold anyway \u2014 never when you want out.'));
+    } else if(pending.length === 0){
+      T.push(tip('good','Everything profitable is already long-term','Every open lot sitting on a gain has passed 365 days, so any sale now attracts the lower '+(R.ltCap*100).toFixed(0)+'% rate.'));
+    }
+  }
+
+  /* --- W-8BEN --- */
+  const treatyPct = Number(S.tax.treatyCap)||10;
+  if(C.div.gross > 0 && C.div.effWHT > 25){
+    T.push(tip('warn','Your dividends are being over-taxed abroad',
+      'The tax withheld on your dividends works out at <b>'+C.div.effWHT.toFixed(0)+'%</b> of the gross. The US statutory rate is 30%; the Romania\u2013US treaty rate is '+treatyPct+'%. That gap normally means no <b>W-8BEN</b> form is on file with your broker.',
+      'Romania only credits you up to the treaty rate, so of the '+ron(C.div.foreign)+' withheld, about <b>'+ron(C.div.lostCredit)+'</b> is money you will never see again. Filing a W-8BEN takes a few minutes in the broker\u2019s app and fixes every future dividend.'));
+  } else if(C.div.gross > 0 && C.div.effWHT > treatyPct*1.15){
+    T.push(tip('warn','Your dividend withholding looks like a blend of two rates',
+      'The effective rate abroad works out to <b>'+C.div.effWHT.toFixed(0)+'%</b> \u2014 between the US statutory 30% and the treaty rate of '+treatyPct+'%. That pattern usually means a <b>W-8BEN</b> was filed with the broker partway through '+C.year+': dividends paid before it was on file were still taxed at 30%, the ones after at '+treatyPct+'%.',
+      'Nothing to fix for '+C.year+' itself \u2014 the credit is capped at '+treatyPct+'% either way, and about <b>'+ron(C.div.lostCredit)+'</b> of the excess withheld before the form kicked in is not recoverable through Romania. If the form is confirmed active now, next year\u2019s effective rate should land much closer to '+treatyPct+'% for the whole year.'));
+  } else if(C.div.gross > 0 && C.div.effWHT > 0){
+    T.push(tip('good','Withholding abroad looks right',
+      'Dividends were taxed at about '+C.div.effWHT.toFixed(0)+'% at source, in line with the treaty rate \u2014 so the credit of '+ron(C.div.credit)+' covers most of the Romanian tax and only '+ron(C.div.payable)+' is left to pay.'));
+  }
+
+  /* --- rate change awareness --- */
+  const nextR = rulesFor(C.year+1);
+  if(nextR.stCap > R.stCap || nextR.div > R.div){
+    T.push(tip('info','Rates go up next year',
+      'For '+(C.year+1)+' the table has '+(nextR.ltCap*100).toFixed(0)+'% / '+(nextR.stCap*100).toFixed(0)+'% on gains and '+(nextR.div*100).toFixed(0)+'% on dividends, against '+(R.ltCap*100).toFixed(0)+'% / '+(R.stCap*100).toFixed(0)+'% and '+(R.div*100).toFixed(0)+'% now.',
+      'When rates are rising, the usual instinct to defer gains flips: realising a gain in the cheaper year can beat waiting \u2014 unless deferring is what keeps you under a CASS step, which is almost always worth more.'));
+  }
+
+  /* --- CASS ceiling --- */
+  if(C.cass.tier === 3){
+    T.push(tip('good','You are at the CASS ceiling',
+      'Passive income above '+ron(th[2])+' adds no further CASS. From here every extra leu of gain costs only the '+(R.ltCap*100).toFixed(0)+'\u2013'+(R.stCap*100).toFixed(0)+'% capital-gains tax, which makes this the cheapest moment to rebalance a concentrated position.'));
+  }
+
+  /* --- voluntary CASS --- */
+  if(C.cass.tier === 0 && C.cass.income > 0){
+    T.push(tip('info','If this is your only income, check your health cover',
+      'Below the threshold you owe no CASS \u2014 but you are also not insured through it. If you have no employer and no other cover, Chapter II of the D212 lets you opt in voluntarily at the 6-wage base ('+ron(th[0]*R.cass)+' for the year).'));
+  }
+
+  /* --- filing --- */
+  T.push(tip('info','Filing and payment',
+    'The declaration for '+C.year+' is due by <b>25 May '+(C.year+1)+'</b> through the ANAF SPV, and the same date is the payment deadline. Amounts are rounded to whole lei.',
+    'There has historically been a small discount for paying the income tax early \u2014 it never applies to CASS. Check whether it is in force for your year before relying on it.',
+    'Keep the <i>Fi\u0219\u0103 de portofoliu</i>, the dividend statement and this year\u2019s export together; if ANAF ever asks, that is the whole file.'));
+
+  /* --- data quality --- */
+  const cov = coverage(C.year);
+  if(cov && cov.covered < 0.95){
+    T.push(tip('warn','Partial data \u2014 treat the numbers as a sketch',
+      'The imported reports cover roughly '+Math.round(cov.covered*100)+'% of '+C.year+'. Re-export from XTB with the range set to 1 January \u2013 31 December and import again; nothing is lost, files are merged and de-duplicated.'));
+  }
+  if(!S.tax.useFisa && C.cg.gross > 0){
+    T.push(tip('info','The official figures beat this estimate',
+      'Everything in section 1 is reconstructed from trade-level data and converted with '+(S.tax.fxMode==='daily'?'daily ECB rates':(S.tax.fxMode==='fixed'?'a single fixed rate':'annual average rates'))+'. Your broker used the BNR rate of each settlement date, so small differences are normal.',
+      'Once the <i>Fi\u0219\u0103 de portofoliu</i> for '+C.year+' arrives (usually by the end of February), tick the override box in section 1 and type those numbers in. They are what ANAF already has.'));
+  }
+
+  $('tips').innerHTML = T.join('');
+}
+
+/* ==================================================================
+   EDITORS (other income, FX detail, rules)
+   ================================================================== */
+function renderOtherRows(){
+  const tb = $('otherTb');
+  const rows = S.tax.other || [];
+  if(!rows.length){
+    tb.innerHTML = '<tr><td colspan="8" class="dim" style="text-align:center">No other income. Add a line for rent, Romanian dividends, bank interest, crypto\u2026</td></tr>';
+    return;
+  }
+  tb.innerHTML = rows.map(r=>{
+    const opts = Object.keys(CATS).map(k=>'<option value="'+k+'"'+(k===r.cat?' selected':'')+'>'+esc(CATS[k].label)+'</option>').join('');
+    return '<tr data-rowid="'+r.id+'">'+
+      '<td><input type="text" data-f="label" value="'+esc(r.label||'')+'" placeholder="e.g. flat in Militari"></td>'+
+      '<td><select data-f="cat">'+opts+'</select></td>'+
+      '<td><input type="number" data-f="gross" step="0.01" value="'+esc(r.gross)+'" placeholder="0.00"></td>'+
+      '<td><input type="number" data-f="withheld" step="0.01" value="'+esc(r.withheld)+'" placeholder="0.00"></td>'+
+      '<td class="c-base dim">\u2014</td><td class="c-tax dim">\u2014</td><td class="c-cass dim">\u2014</td>'+
+      '<td class="row-actions"><button data-del="'+r.id+'" title="remove">\u00d7</button></td></tr>';
+  }).join('');
+}
+
+function renderFxDetail(){
+  const y = S.tax.year;
+  const el = $('fxDetail');
+  const TD = taxData();
+  const allCcys = [...new Set([...TD.closed.map(t=>t._ccy), ...TD.cashOps.map(o=>o._ccy)])];
+  if(!allCcys.length){ el.innerHTML = 'No foreign-currency income imported yet.'; return; }
+  const ccys = allCcys.filter(c=>c && c!=='RON');
+  if(!ccys.length){ el.innerHTML = 'Account is already in RON \u2014 no conversion applied.'; return; }
+
+  if(S.tax.fxMode === 'fixed'){
+    el.innerHTML = 'Every amount is converted at the single rate above. Quick and rough \u2014 fine for a sanity check, not for a filing.'+
+      (ccys.length>1 ? ' <span style="color:var(--neg)">You have income in '+ccys.join(' and ')+' \u2014 one fixed rate can\u2019t convert both correctly. Use annual averages instead.</span>' : '');
+    return;
+  }
+  if(S.tax.fxMode === 'daily'){
+    const c = cur();
+    const meta = S.tax.dailyMeta[c];
+    el.innerHTML = (meta
+      ? 'Using '+meta.n+' daily '+c+'/RON rates ('+meta.from+' \u2192 '+meta.to+', fetched '+meta.fetched.slice(0,10)+'). Source: European Central Bank via Frankfurter. BNR rates differ by a fraction. <button class="btn-ghost btn-sm" id="refetch">Refresh</button>'
+      : 'No daily rates loaded yet. <button class="btn-ghost btn-sm" id="refetch">Fetch now</button>')+
+      (ccys.length>1 ? ' <span style="color:var(--neg)">Daily rates only cover '+c+' \u2014 income in '+ccys.filter(x=>x!==c).join(', ')+' falls back to annual averages.</span>' : '');
+    const b = $('refetch'); if(b) b.onclick = fetchDailyRates;
+    return;
+  }
+  let html = '';
+  ccys.forEach(c=>{
+    const years = new Set([y]);
+    TD.closed.forEach(t=>{ if(t._ccy===c && t.closeTime && t.closeTime.getFullYear()===y){ years.add(y); if(t.openTime) years.add(t.openTime.getFullYear()); } });
+    const list = [...years].sort();
+    html += '<div style="margin-bottom:10px"><b>'+c+'</b> \u2014 annual average rates used (1 '+c+' = ? RON), editable, verify on bnr.ro:<br><span class="seg" style="margin-top:6px">';
+    list.forEach(yy=>{
+      const v = annualRate(c, yy);
+      html += '<label style="display:inline-flex;align-items:center;gap:6px;margin-right:12px">'+yy+
+        ' <input type="number" step="0.0001" class="mini-input fx-year" data-year="'+yy+'" data-ccy="'+c+'" value="'+(v==null?'':v)+'">'+
+        (yy>=PROVISIONAL_YEAR?' <span class="badge neutral">provisional</span>':'')+'</label>';
+    });
+    html += '</span>';
+    if(!fxAvailable(c, y)) html += '<br><span style="color:var(--neg)">No rate on file for '+c+'. Type one above.</span>';
+    html += '</div>';
+  });
+  el.innerHTML = html;
+  el.querySelectorAll('.fx-year').forEach(inp=>{
+    inp.addEventListener('input', e=>{
+      const yy = e.target.dataset.year, c = e.target.dataset.ccy;
+      S.tax.fxAnnual[c] = S.tax.fxAnnual[c] || {};
+      S.tax.fxAnnual[c][yy] = e.target.value;
+      save(); renderTax(); renderLongTerm();
+    });
+  });
+}
+
+function renderRules(){
+  const years = [2023,2024,2025,2026,2027];
+  const f = (y,k)=>{ const R = rulesFor(y); return k==='minWage' ? R[k] : (R[k]*100); };
+  $('rulesTb').innerHTML = years.map(y=>{
+    const cells = ['ltCap','stCap','div','interest','crypto','rent','rentDeduct','cass','minWage'].map(k=>
+      '<td><input type="number" step="'+(k==='minWage'?'50':'0.5')+'" class="mini-input rule-in" data-y="'+y+'" data-k="'+k+'" value="'+f(y,k)+'"></td>').join('');
+    return '<tr><td><b>'+y+'</b>'+(y===S.tax.year?' <span class="badge st">active</span>':'')+'</td>'+cells+
+      '<td class="row-actions"><button data-reset="'+y+'" title="reset">\u21ba</button></td></tr>';
+  }).join('');
+  $('rulesTb').querySelectorAll('.rule-in').forEach(inp=>{
+    inp.addEventListener('change', e=>{
+      const y = e.target.dataset.y, k = e.target.dataset.k, v = Number(e.target.value);
+      S.tax.rules[y] = S.tax.rules[y] || {};
+      S.tax.rules[y][k] = (k==='minWage') ? v : v/100;
+      save(); renderTax(); renderLongTerm();
+    });
+  });
+  $('rulesTb').querySelectorAll('[data-reset]').forEach(b=>{
+    b.addEventListener('click', e=>{
+      delete S.tax.rules[e.target.dataset.reset];
+      save(); renderRules(); renderTax();
+    });
+  });
+}
+
+/* ==================================================================
+   SHELL
+   ================================================================== */
+function renderAcctSwitcher(){
+  const keys = accountKeys();
+  const row = $('acctRow'), sw = $('acctSwitcher'), ccyField = $('viewCcyField'), ccySel = $('viewCcySelect');
+  if(!keys.length){ row.style.display = 'none'; return; }
+  row.style.display = 'flex';
+  if(S.activeView !== 'all' && !S.accounts[S.activeView]) S.activeView = 'all';
+  const btns = keys.map(k=>
+    '<button type="button" class="toggle-btn'+(S.activeView===k?' active':'')+'" data-acct="'+esc(k)+'">'+esc(accountLabel(k))+'</button>'
+  );
+  btns.push('<button type="button" class="toggle-btn'+(S.activeView==='all'?' active':'')+'" data-acct="all">All accounts'+(keys.length>1?' ('+keys.length+')':'')+'</button>');
+  sw.innerHTML = btns.join('');
+  sw.querySelectorAll('button[data-acct]').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      S.activeView = b.dataset.acct;
+      save(); renderAll();
+    });
+  });
+  const distinctCcys = new Set(keys.map(accountCcy));
+  const showCcyPicker = S.activeView === 'all' && distinctCcys.size > 1;
+  ccyField.style.display = showCcyPicker ? 'flex' : 'none';
+  if(showCcyPicker){
+    if(!S.viewCcy) S.viewCcy = accountCcy(keys[0]);
+    ccySel.value = S.viewCcy;
+  }
+}
+function renderFooter(){
+  const meta = $('metaLine'), clearBtn = $('clearBtn'), footer = $('footerNote');
+  const keys = accountKeys();
+  if(!keys.length){
+    meta.textContent = 'No report imported yet';
+    clearBtn.style.display = 'none';
+    footer.textContent = '';
+    return;
+  }
+  const bits = [];
+  if(S.activeView !== 'all' && S.accounts[S.activeView]){
+    const a = S.accounts[S.activeView];
+    bits.push(accountLabel(S.activeView));
+    if(a.accountNumber) bits.push('Account '+a.accountNumber);
+    if(a.reportDate) bits.push('snapshot '+iso(toDate(a.reportDate)));
+    if((a.closed||[]).length) bits.push(a.closed.length+' closed trades');
+  } else {
+    bits.push(keys.length+' account'+(keys.length===1?'':'s')+': '+keys.map(accountLabel).join(', '));
+    const totalClosed = keys.reduce((s,k)=>s+(S.accounts[k].closed||[]).length,0);
+    if(totalClosed) bits.push(totalClosed+' closed trades combined');
+  }
+  meta.textContent = bits.join(' \u00b7 ');
+  clearBtn.style.display = 'inline-flex';
+  clearBtn.textContent = (S.activeView!=='all' && keys.length>1) ? 'Clear this account' : 'Clear data';
+  footer.textContent = 'Nothing here talks to XTB or to ANAF. It only knows what you imported \u2014 re-export and re-import for fresh numbers.';
+}
+
+function syncCashInput(){
+  const el = $('cashInput'), note = $('cashNote');
+  if(S.activeView === 'all'){
+    const V = view();
+    el.value = V.cash ? V.cash.toFixed(2) : '';
+    el.disabled = true;
+    note.textContent = 'Combined sum, converted to '+cur()+'. Switch to a single account to edit its cash balance.';
+  } else {
+    el.disabled = false;
+    const A = S.accounts[S.activeView];
+    el.value = (A && A.cash != null) ? A.cash : '';
+    note.textContent = 'Not included in the XTB export \u2014 enter it manually to complete your total.';
+  }
+}
+function renderAll(){
+  renderAcctSwitcher();
+  syncCurSelect();
+  syncCashInput();
+  renderCards(); renderTape(); renderTable(); renderDeposits(); renderAllocation(); renderPlChart(); renderLongTerm();
+  renderYearOptions(); renderOtherRows(); renderFxDetail(); renderRules(); renderTax();
+}
+
+function renderYearOptions(){
+  const sel = $('taxYear'), ys = yearsAvailable();
+  if(!ys.includes(S.tax.year)) S.tax.year = ys[0];
+  sel.innerHTML = ys.map(y=>'<option value="'+y+'"'+(y===S.tax.year?' selected':'')+'>'+y+'</option>').join('');
+}
+
+/* ---------- events ---------- */
+document.querySelectorAll('.tab').forEach(t=>{
+  t.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    $('page-'+t.dataset.page).classList.add('active');
+    window.scrollTo({top:0, behavior:'smooth'});
+  });
+});
+
+$('file').addEventListener('change', e=>{
+  const files = [...e.target.files];
+  if(!files.length) return;
+  if(typeof XLSX === 'undefined'){
+    alert('The spreadsheet reader did not load. This file needs an internet connection the first time you open it, to pull in the .xlsx library. Reconnect and reload the page.');
+    e.target.value=''; return;
+  }
+  let done = 0, msgs = [], errs = [];
+  files.forEach(f=>{
+    const r = new FileReader();
+    r.onload = ev=>{
+      try{
+        const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array', cellDates:true});
+        msgs = msgs.concat(importWorkbook(wb).map(m=>f.name.slice(0,18)+': '+m));
+      }catch(err){ errs.push(f.name+' \u2014 '+(err.message||'unreadable')); }
+      if(++done === files.length){
+        save(); renderAll();
+        if(errs.length) alert('Some files could not be read:\n\n'+errs.join('\n'));
+      }
+    };
+    r.readAsArrayBuffer(f);
+  });
+  e.target.value = '';
+});
+
+$('cashInput').addEventListener('input', e=>{
+  if(S.activeView === 'all') return; // combined view's cash is a read-only sum; edit a single account instead
+  const A = S.accounts[S.activeView];
+  if(!A) return;
+  A.cash = e.target.value === '' ? null : Number(e.target.value);
+  save(); renderCards(); renderAllocation(); renderTable(); renderDeposits();
+});
+
+$('backupBtn').addEventListener('click', ()=>{
+  try{
+    const blob = new Blob([JSON.stringify(S)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0,10);
+    a.href = url; a.download = 'xtb-tracker-backup-'+stamp+'.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 2000);
+  }catch(e){ alert('Could not create the backup file: '+(e.message||e)); }
+});
+$('restoreFile').addEventListener('change', e=>{
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = ev=>{
+    try{
+      const o = JSON.parse(ev.target.result);
+      if(!o || typeof o !== 'object' || !o.accounts) throw new Error('This doesn\u2019t look like a backup file from this app.');
+      if(accountKeys().length && !confirm('This replaces everything currently loaded (accounts, tax settings, other income rows) with the contents of this backup. Continue?')) return;
+      S = o;
+      accountKeys().forEach(k=>fixDatesInAccount(S.accounts[k]));
+      save(); renderAll();
+      alert('Backup restored.');
+    }catch(err){ alert('Could not read that file: '+(err.message||err)); }
+  };
+  r.readAsText(f);
+  e.target.value = '';
+});
+
+$('clearBtn').addEventListener('click', ()=>{
+  const keys = accountKeys();
+  if(S.activeView !== 'all' && keys.length > 1){
+    if(!confirm('Remove '+accountLabel(S.activeView)+' from this browser? Your other account\u2019s data is kept.')) return;
+    delete S.accounts[S.activeView];
+    S.activeView = 'all';
+  } else {
+    if(!confirm('Clear all imported accounts, portfolios and trade history from this browser?')) return;
+    S.accounts = {};
+    S.activeView = 'all';
+    S.viewCcy = '';
+  }
+  save(); renderAll();
+});
+
+document.querySelectorAll('th[data-key]').forEach(th=>{
+  th.addEventListener('click', ()=>{
+    const k = th.dataset.key;
+    if(sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = -1; }
+    renderTable();
+  });
+});
+
+document.querySelectorAll('.toggle-btn[data-metric]').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    document.querySelectorAll('.toggle-btn[data-metric]').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active'); plMetric = b.dataset.metric; renderPlChart();
+  });
+});
+
+$('viewCcySelect').addEventListener('change', e=>{
+  S.viewCcy = e.target.value; save(); renderAll();
+});
+
+$('benchRate').addEventListener('input', ()=>{
+  document.querySelectorAll('#benchPresets .toggle-btn').forEach(x=>x.classList.remove('active'));
+  renderXirr();
+});
+document.querySelectorAll('#benchPresets .toggle-btn').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    $('benchRate').value = b.dataset.rate;
+    document.querySelectorAll('#benchPresets .toggle-btn').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    renderXirr();
+  });
+});
+
+/* tax setup */
+$('taxYear').addEventListener('change', e=>{ S.tax.year = Number(e.target.value); save(); renderFxDetail(); renderRules(); renderTax(); });
+function syncCurSelect(){
+  const sel = $('curSelect'), hint = $('curHint'), field = sel.closest('.field');
+  if(S.activeView === 'all'){
+    sel.disabled = true; sel.value = 'auto';
+    hint.textContent = accountKeys().length > 1 ? 'Switch to a single account to override its currency' : 'Import a report to detect a currency';
+    return;
+  }
+  sel.disabled = false;
+  const A = S.accounts[S.activeView];
+  const choice = (A && A.currencyChoice) || 'auto';
+  sel.value = choice;
+  hint.textContent = choice !== 'auto' ? 'Manual override' : (A && A.currency ? 'Detected '+A.currency+' in the file' : 'Nothing detected yet');
+}
+$('curSelect').addEventListener('change', e=>{
+  if(S.activeView === 'all') return;
+  const A = S.accounts[S.activeView];
+  if(!A) return;
+  A.currencyChoice = e.target.value;
+  save(); syncCurSelect(); renderAll();
+});
+$('fxMode').addEventListener('change', e=>{
+  S.tax.fxMode = e.target.value;
+  $('fixedWrap').style.display = e.target.value==='fixed' ? 'flex' : 'none';
+  save(); renderFxDetail(); renderTax(); renderLongTerm();
+  if(e.target.value === 'daily' && !S.tax.daily[cur()]) fetchDailyRates();
+  else if(e.target.value !== 'daily') setFxStatus('off', e.target.value==='fixed'?'fixed rate':'annual averages, offline');
+});
+$('fixedRate').addEventListener('input', e=>{ S.tax.fixedRate = e.target.value; save(); renderTax(); renderLongTerm(); });
+$('minWage').addEventListener('input', e=>{ S.tax.minWage = e.target.value; save(); renderTax(); });
+$('treatyCap').addEventListener('input', e=>{ S.tax.treatyCap = e.target.value; save(); renderTax(); });
+$('useFisa').addEventListener('change', e=>{ S.tax.useFisa = e.target.checked; save(); renderTax(); });
+['gainLT','gainST','loss','tax'].forEach(k=>{
+  $('fisa'+k.charAt(0).toUpperCase()+k.slice(1)).addEventListener('input', e=>{ S.tax.fisa[k] = e.target.value; save(); renderTax(); });
+});
+$('mDivGross').addEventListener('input', e=>{ S.tax.mDivGross = e.target.value; save(); renderTax(); });
+$('mDivTax').addEventListener('input', e=>{ S.tax.mDivTax = e.target.value; save(); renderTax(); });
+$('mIntGross').addEventListener('input', e=>{ S.tax.mIntGross = e.target.value; save(); renderTax(); });
+$('intWithheld').addEventListener('change', e=>{ S.tax.intWithheld = e.target.checked; save(); renderTax(); });
+
+$('addRow').addEventListener('click', ()=>{
+  S.tax.other = S.tax.other || [];
+  S.tax.other.push({id:'r'+Date.now()+Math.floor(Math.random()*1000), label:'', cat:'rent', gross:'', withheld:''});
+  save(); renderOtherRows(); renderTax();
+});
+$('otherTb').addEventListener('input', e=>{
+  const tr = e.target.closest('tr'); if(!tr) return;
+  const row = (S.tax.other||[]).find(r=>r.id === tr.dataset.rowid); if(!row) return;
+  const f = e.target.dataset.f; if(!f) return;
+  row[f] = e.target.value; save(); renderTax();
+});
+$('otherTb').addEventListener('change', e=>{
+  if(e.target.dataset.f === 'cat'){
+    const tr = e.target.closest('tr');
+    const row = (S.tax.other||[]).find(r=>r.id === tr.dataset.rowid);
+    if(row){ row.cat = e.target.value; save(); renderTax(); }
+  }
+});
+$('otherTb').addEventListener('click', e=>{
+  const id = e.target.dataset.del; if(!id) return;
+  S.tax.other = (S.tax.other||[]).filter(r=>r.id !== id);
+  save(); renderOtherRows(); renderTax();
+});
+
+/* ---------- init ---------- */
+load();
+$('fxMode').value = S.tax.fxMode || 'annual';
+$('fixedWrap').style.display = S.tax.fxMode === 'fixed' ? 'flex' : 'none';
+if(S.tax.fixedRate != null) $('fixedRate').value = S.tax.fixedRate;
+if(S.tax.minWage != null) $('minWage').value = S.tax.minWage;
+$('minWage').placeholder = rulesFor(S.tax.year).minWage;
+$('treatyCap').value = (S.tax.treatyCap == null ? 10 : S.tax.treatyCap);
+$('useFisa').checked = !!S.tax.useFisa;
+$('intWithheld').checked = !!S.tax.intWithheld;
+['gainLT','gainST','loss','tax'].forEach(k=>{
+  const el = $('fisa'+k.charAt(0).toUpperCase()+k.slice(1));
+  if(el && S.tax.fisa && S.tax.fisa[k] != null) el.value = S.tax.fisa[k];
+});
+$('mDivGross').value = S.tax.mDivGross || '';
+$('mDivTax').value = S.tax.mDivTax || '';
+$('mIntGross').value = S.tax.mIntGross || '';
+setFxStatus(S.tax.fxMode==='daily' && S.tax.daily[cur()] ? 'ok' : 'off',
+  S.tax.fxMode==='daily' ? (S.tax.daily[cur()] ? 'daily rates cached' : 'daily rates not loaded') : 'annual averages, offline');
+renderAll();
+</script>
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{ /* offline caching unavailable, app still works online */ });
+  });
+}
+</script>
+</body>
+</html>
